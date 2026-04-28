@@ -139,16 +139,22 @@ class APIHandler:
             )
 
     async def timeseries(self, request):
-        """GET /api/bets/timeseries?days=30 — daily bankroll over time."""
+        """GET /api/bets/timeseries?days=30 — cumulative realized P&L over time.
+
+        Each resolved bet contributes its realized P&L:
+          - WIN  → payout - stake
+          - LOSS → -stake
+
+        The curve starts at 0 and accumulates over resolved_at ascending.
+        Final value equals total_realized_pnl (chart_last_value == total_pnl).
+        Open bets have ZERO impact on this chart.
+        """
         try:
             days = int(request.query.get("days", "30"))
         except ValueError:
             days = 30
 
         try:
-            open_bets = await asyncio.get_event_loop().run_in_executor(
-                None, self._safe_open_bets
-            )
             resolved_bets = await asyncio.get_event_loop().run_in_executor(
                 None, self._safe_resolved_bets
             )
@@ -158,51 +164,43 @@ class APIHandler:
                 {"error": "Failed to fetch bets", "detail": str(e)}, status=500
             )
 
-        all_bets = open_bets + resolved_bets
-
-        if not all_bets:
+        # Filter resolved bets only
+        resolved = [b for b in resolved_bets if b.resolved and b.resolved_at]
+        if not resolved:
             return web.json_response([])
 
-        # Build a chronological event log: (date_str, delta)
-        events = {}  # date_str -> delta
+        # Sort by resolved_at ASC (oldest first)
+        resolved.sort(key=lambda b: b.resolved_at)
 
-        for bet in all_bets:
-            place_date = bet.timestamp[:10] if bet.timestamp else None
-            if place_date:
-                events.setdefault(place_date, 0.0)
-                events[place_date] -= bet.stake
-
-            if bet.resolved and bet.resolved_at:
-                resolve_date = bet.resolved_at[:10]
-                if bet.result == "win":
-                    events.setdefault(resolve_date, 0.0)
-                    events[resolve_date] += bet.payout
-                # losses: stake already subtracted on place_date, no further change
-
-        # Sort unique dates
-        sorted_dates = sorted(events.keys())
-        if not sorted_dates:
-            return web.json_response([])
-
-        # Generate result for requested window
+        # Build cumulative realized P&L series
         end_date = datetime.now().date()
         start_date = end_date - timedelta(days=days - 1)
 
-        # Also include historical dates before window so we can carry forward bankroll
-        all_event_dates = [datetime.strptime(d, "%Y-%m-%d").date() for d in sorted_dates]
+        # Include historical dates before window so curve is continuous
+        all_event_dates = [datetime.strptime(b.resolved_at[:10], "%Y-%m-%d").date() for b in resolved]
         first_event_date = min(all_event_dates)
 
-        current_date = min(first_event_date, start_date)
-        bankroll = self.portfolio.initial_bankroll
+        cutoff = min(first_event_date, start_date)
+        cumulative = 0.0
         result = []
+        current_date = cutoff
 
         while current_date <= end_date:
             date_str = current_date.isoformat()
-            if date_str in events:
-                bankroll += events[date_str]
+
+            # Add all bet P&L events for this date
+            for bet in resolved:
+                if bet.resolved_at and bet.resolved_at[:10] == date_str:
+                    if bet.result == "win":
+                        cumulative += bet.payout - bet.stake
+                    else:
+                        cumulative -= bet.stake
 
             if current_date >= start_date:
-                result.append({"date": date_str, "bankroll": round(bankroll, 2)})
+                result.append({
+                    "date": date_str,
+                    "realized_pnl": round(cumulative, 2),
+                })
 
             current_date += timedelta(days=1)
 

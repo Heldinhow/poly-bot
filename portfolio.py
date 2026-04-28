@@ -219,6 +219,19 @@ class PaperPortfolio:
     def stats(self) -> dict:
         resolved = self.get_resolved_bets()
         wins = [b for b in resolved if b.result == "win"]
+        losses = [b for b in resolved if b.result == "lose"]
+
+        # Realized P&L
+        realized_pnl = sum(
+            (b.payout - b.stake) if b.result == "win" else -b.stake
+            for b in resolved
+        )
+        total_staked_resolved = sum(b.stake for b in resolved)
+        realized_roi = (
+            (realized_pnl / total_staked_resolved * 100)
+            if total_staked_resolved > 0 else 0.0
+        )
+
         roi = (self.bankroll - self.initial_bankroll) / self.initial_bankroll * 100
 
         underdog_wins = [b for b in resolved if b.result == "win" and b.probability_ai is not None]
@@ -228,11 +241,14 @@ class PaperPortfolio:
             "bankroll": round(self.bankroll, 2),
             "initial_bankroll": self.initial_bankroll,
             "roi_pct": round(roi, 2),
+            "realized_pnl": round(realized_pnl, 2),
+            "total_staked_resolved": round(total_staked_resolved, 2),
+            "realized_roi": round(realized_roi, 2),
             "total_bets": len(self.bets) + len(resolved),
             "open_bets": len(self.get_open_bets()),
             "resolved_bets": len(resolved),
             "wins": len(wins),
-            "losses": len(resolved) - len(wins),
+            "losses": len(losses),
             "win_rate": round(len(wins) / len(resolved) * 100, 1) if resolved else 0,
             "sharpe_ratio": round(self._calculate_sharpe(), 2),
             "max_drawdown": round(self._calculate_max_drawdown() * 100, 1),

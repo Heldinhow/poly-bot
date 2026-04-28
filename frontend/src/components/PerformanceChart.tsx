@@ -39,13 +39,15 @@ function formatBankroll(value: number): string {
   return `$${value.toFixed(0)}`;
 }
 
+interface TimeseriesPoint {
+  date: string;
+  realized_pnl: number;
+}
+
 interface CustomTooltipProps {
   active?: boolean;
   payload?: Array<{
-    payload: {
-      date: string;
-      bankroll: number;
-    };
+    payload: TimeseriesPoint & { formattedDate: string };
   }>;
   label?: string;
 }
@@ -61,20 +63,27 @@ function CustomTooltip({ active, payload }: CustomTooltipProps) {
     year: 'numeric',
   });
 
+  const isProfit = point.realized_pnl >= 0;
+  const color = isProfit ? '#00e5ff' : '#ff4d6d';
+
   return (
     <div className="rounded-lg border border-border-medium bg-bg-card px-4 py-3 shadow-lg">
       <p className="mb-1 text-xs uppercase tracking-wider text-text-muted font-mono">
         {dateStr}
       </p>
-      <p className="text-sm font-mono text-cyan">
-        ${point.bankroll.toLocaleString('en-US', { maximumFractionDigits: 0 })}
+      <p className="text-sm font-mono" style={{ color }}>
+        ${point.realized_pnl >= 0 ? '+' : ''}
+        {point.realized_pnl.toLocaleString('en-US', { maximumFractionDigits: 2 })}
       </p>
     </div>
   );
 }
 
+type ViewMode = 'realized' | 'equity';
+
 export default function PerformanceChart() {
   const [activeTab, setActiveTab] = useState<TimeRange>(30);
+  const [viewMode, setViewMode] = useState<ViewMode>('realized');
   const daysParam = activeTab === 'ALL' ? undefined : activeTab;
   const { data, isLoading, error } = useTimeseries(daysParam);
 
@@ -90,9 +99,34 @@ export default function PerformanceChart() {
     <div className="rounded-lg border border-border-subtle bg-bg-surface">
       {/* Header */}
       <div className="flex items-center justify-between px-5 py-4">
-        <h2 className="font-display text-xl tracking-[3px] text-text-primary uppercase">
-          Portfolio Performance
-        </h2>
+        <div className="flex items-center gap-3">
+          <h2 className="font-display text-xl tracking-[3px] text-text-primary uppercase">
+            Portfolio Performance
+          </h2>
+          {/* Toggle: Realized vs Equity */}
+          <div className="rounded-md bg-bg-deep p-[3px] flex gap-[2px]">
+            <button
+              onClick={() => setViewMode('realized')}
+              className={`rounded-sm px-3 py-1 text-xs font-mono transition-colors ${
+                viewMode === 'realized'
+                  ? 'bg-bg-elevated text-cyan'
+                  : 'text-text-muted hover:text-text-secondary'
+              }`}
+            >
+              Realized P&L
+            </button>
+            <button
+              onClick={() => setViewMode('equity')}
+              className={`rounded-sm px-3 py-1 text-xs font-mono transition-colors ${
+                viewMode === 'equity'
+                  ? 'bg-bg-elevated text-cyan'
+                  : 'text-text-muted hover:text-text-secondary'
+              }`}
+            >
+              Equity
+            </button>
+          </div>
+        </div>
         <div className="rounded-md bg-bg-deep p-[3px]">
           <div className="flex gap-[2px]">
             {TABS.map((tab) => (
@@ -171,7 +205,7 @@ export default function PerformanceChart() {
               <Tooltip content={<CustomTooltip />} cursor={{ stroke: 'rgba(255,255,255,0.08)', strokeWidth: 1 }} />
               <Area
                 type="monotone"
-                dataKey="bankroll"
+                dataKey="realized_pnl"
                 stroke="#00e5ff"
                 strokeWidth={2}
                 fill="url(#bankrollGradient)"
