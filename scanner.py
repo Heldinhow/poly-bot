@@ -9,6 +9,8 @@ from filters import build_filter_predicates
 from portfolio import PaperPortfolio
 from reporter import MarketResolver
 from db.cache_repository import CacheRepository
+from db.decision_factor_repository import DecisionFactorRepository
+from db.execution_summary_repository import ExecutionSummaryRepository
 
 logger = logging.getLogger(__name__)
 
@@ -32,6 +34,8 @@ class Scanner:
         self._decision_gate = decision_gate
         self._agent_runner = agent_runner
         self._cache = CacheRepository()
+        self._factor_repo = DecisionFactorRepository()
+        self._summary_repo = ExecutionSummaryRepository()
         
         settings = get_settings()
         self._vol_pred, self._value_pred, self._live_pred = build_filter_predicates(
@@ -104,164 +108,224 @@ class Scanner:
         
         return None, ""
 
-    def scan(self) -> int:
-        logger.info("Starting scan...")
-        markets = self._client.fetch_active_markets(limit=200)
-        if not markets:
-            logger.warning("No markets fetched")
-            return 0
-
-        volume_filtered = self._client.filter_markets(markets, self._vol_pred)
-        logger.debug(f"Stage 1: {len(volume_filtered)}/{len(markets)} markets")
-
-        live_filtered = self._client.filter_markets(volume_filtered, self._live_pred)
-        logger.debug(f"Stage 2 (live): {len(live_filtered)}/{len(volume_filtered)} markets")
-
-        value_bets = self._client.filter_markets(live_filtered, self._value_pred)
-        logger.info(f"Found {len(value_bets)} value bet opportunities")
-
-        # Pre-filter: only analyze markets that pass cache + static checks
-        analyzable = []
-        for m in value_bets:
-            underdog = min(m.yes_price, m.no_price)
-            odds = 1.0 / underdog
-            if self._should_analyze(m, underdog, odds):
-                analyzable.append(m)
-        
-        logger.info(f"Pre-filter: {len(analyzable)}/{len(value_bets)} markets worth analyzing")
-
+    def scan(self, resolve_only: bool = False) -> int:
         sent = 0
-        
-        # Create persistent event loop for all AI analysis
-        try:
-            loop = asyncio.new_event_loop()
-            asyncio.set_event_loop(loop)
-            
-            for market in analyzable:
-                underdog_price = (
-                    market.yes_price
-                    if market.yes_price < market.no_price
-                    else market.no_price
-                )
-                underdog_outcome = (
-                    market.outcomes[0].outcome
-                    if market.yes_price < market.no_price
-                    else market.outcomes[1].outcome
-                )
-                odds = 1.0 / underdog_price
-                implied_prob = underdog_price
 
-                # AI Analysis Layer — Agent Runtime first, fallback to legacy agents
-                ai_probability = None
-                ai_analysis = ""
-                agent_name = "unknown"
+        if not resolve_only:
+            logger.info("Starting scan...")
+            markets = self._client.fetch_active_markets(limit=200)
+            if not markets:
+                logger.warning("No markets fetched")
+                return 0
 
-                # Try Agent Runtime first
-                if self._agent_runner:
+            volume_filtered = self._client.filter_markets(markets, self._vol_pred)
+            logger.debug(f"Stage 1: {len(volume_filtered)}/{len(markets)} markets")
+
+            live_filtered = self._client.filter_markets(volume_filtered, self._live_pred)
+            logger.debug(f"Stage 2 (live): {len(live_filtered)}/{len(volume_filtered)} markets")
+
+            value_bets = self._client.filter_markets(live_filtered, self._value_pred)
+            logger.info(f"Found {len(value_bets)} value bet opportunities")
+
+            # Pre-filter: only analyze markets that pass cache + static checks
+            analyzable = []
+            for m in value_bets:
+                underdog = min(m.yes_price, m.no_price)
+                odds = 1.0 / underdog
+                if self._should_analyze(m, underdog, odds):
+                    analyzable.append(m)
+
+            logger.info(f"Pre-filter: {len(analyzable)}/{len(value_bets)} markets worth analyzing")
+
+            # Create persistent event loop for all AI analysis
+            try:
+                loop = asyncio.new_event_loop()
+                asyncio.set_event_loop(loop)
+
+                for market in analyzable:
+                    underdog_price = (
+                        market.yes_price
+                        if market.yes_price < market.no_price
+                        else market.no_price
+                    )
+                    underdog_outcome = (
+                        market.outcomes[0].outcome
+                        if market.yes_price < market.no_price
+                        else market.outcomes[1].outcome
+                    )
+                    odds = 1.0 / underdog_price
+                    implied_prob = underdog_price
+
+                    # AI Analysis Layer — Agent Runtime first, fallback to legacy agents
+                    ai_probability = None
+                    ai_analysis = ""
+                    agent_name = "unknown"
+
+                    # Try Agent Runtime first
+                    if self._agent_runner:
+                        try:
+                            result = loop.run_until_complete(
+                                self._agent_runner.analyze_market(
+                                    market_id=market.id,
+                                    question=market.question,
+                                    yes_price=market.yes_price,
+                                    no_price=market.no_price,
+                                    volume_24h=market.volume_24h,
+                                    resolution_date=getattr(market, 'resolution_date', None),
+                                )
+                            )
+                            if result and result.probability is not None:
+                                ai_probability = result.probability
+                                ai_analysis = result.reasoning or ""
+                                agent_name = getattr(result, 'agent_name', 'AgentRuntime')
+                                logger.info(
+                                    f"[AgentRuntime] {market.question[:50]}: "
+                                    f"agent={agent_name} prob={ai_probability:.2%} | "
+                                    f"implied={implied_prob:.2%} | odds={odds:.2f}:1"
+                                )
+                            elif result and result.error_message:
+                                logger.warning(
+                                    f"[AgentRuntime] FAILED {market.question[:50]}: {result.error_message}"
+                                )
+                        except Exception as e:
+                            logger.error(f"[AgentRuntime] ERROR {market.question[:50]}: {e}")
+
+                    # Fallback to legacy agents if runtime failed or unavailable
+                    if ai_probability is None and self._ai_agents:
+                        try:
+                            ai_probability, ai_analysis = loop.run_until_complete(
+                                self._analyze_market(market)
+                            )
+                            if ai_probability is not None:
+                                agent_name = "LegacyAgents"
+                                logger.info(
+                                    f"[Legacy] {market.question[:50]}: "
+                                    f"prob={ai_probability:.2%} | implied={implied_prob:.2%} | odds={odds:.2f}:1"
+                                )
+                        except Exception as e:
+                            logger.error(f"[Legacy] FAILED {market.question[:50]}: {e}")
+
+                    # Decision Gate
+                    decision = "SKIP"
+                    reject_reason = None
+                    edge = 0.0
+                    bet = None
+                    if self._decision_gate and ai_probability is not None:
+                        edge = (ai_probability * odds) - 1.0
+                        decision = self._decision_gate.evaluate_edge(edge, ai_probability, implied_prob)
+                        logger.info(
+                            f"Decision for {market.question[:50]}: {decision} "
+                            f"(edge={edge:+.1%}, ai={ai_probability:.1%}, market={implied_prob:.1%})"
+                        )
+                        if decision == "REJECT":
+                            if edge < get_settings().min_edge:
+                                reject_reason = "no_edge"
+                            elif ai_probability < implied_prob * 0.85:
+                                reject_reason = "ai_disagrees"
+                            else:
+                                reject_reason = "threshold"
+
+                        # Cache the result
+                        self._cache.set_cache(
+                            market_id=market.id,
+                            question=market.question,
+                            yes_price=market.yes_price,
+                            no_price=market.no_price,
+                            probability=ai_probability,
+                            confidence=None,
+                            reasoning=ai_analysis,
+                            agent_name=agent_name,
+                            decision=decision,
+                        )
+
+                    # Paper trading: record bet
+                    if self._portfolio and decision == "ACCEPT":
+                        bet = self._portfolio.record_bet(
+                            market_id=market.id,
+                            question=market.question,
+                            outcome=underdog_outcome,
+                            price=underdog_price,
+                            probability_ai=ai_probability,
+                            analysis_summary=ai_analysis,
+                        )
+
+                    # Persist decision factors and execution summary
                     try:
-                        result = loop.run_until_complete(
-                            self._agent_runner.analyze_market(
+                        first_exec_id = None
+                        last_exec_id = None
+                        if (result and hasattr(result, 'execution_log_id') and result.execution_log_id):
+                            last_exec_id = result.execution_log_id
+                            first_exec_id = result.execution_log_id
+
+                        self._factor_repo.create(
+                            execution_log_id=last_exec_id,
+                            market_id=market.id,
+                            implied_prob=implied_prob,
+                            ai_prob=ai_probability or 0.0,
+                            odds=odds,
+                            edge=edge,
+                            decision=decision,
+                            reject_reason=reject_reason,
+                            bet_id=getattr(bet, 'id', None) if bet else None,
+                            stake=getattr(bet, 'stake', None) if bet else None,
+                            kelly_frac=getattr(bet, 'kelly_frac', None) if bet else None,
+                        )
+                        self._summary_repo.upsert_from_market(
+                            market_id=market.id,
+                            question=market.question,
+                            yes_price=market.yes_price,
+                            no_price=market.no_price,
+                            volume_24h=market.volume_24h,
+                            resolution_date=getattr(market, 'resolution_date', None) or "",
+                            agent_names=[agent_name],
+                            probabilities=[ai_probability] if ai_probability else [],
+                            confidences=[],
+                            reasoning_summary=ai_analysis[:500] if ai_analysis else "",
+                            decision=decision,
+                            reject_reason=reject_reason or "",
+                            edge=edge,
+                            first_execution_id=first_exec_id,
+                            last_execution_id=last_exec_id,
+                            execution_count=1,
+                        )
+                        if bet:
+                            self._summary_repo.update_bet_link(
                                 market_id=market.id,
-                                question=market.question,
-                                yes_price=market.yes_price,
-                                no_price=market.no_price,
-                                volume_24h=market.volume_24h,
-                                resolution_date=getattr(market, 'resolution_date', None),
-                            )
-                        )
-                        if result and result.probability is not None:
-                            ai_probability = result.probability
-                            ai_analysis = result.reasoning or ""
-                            agent_name = getattr(result, 'agent_name', 'AgentRuntime')
-                            logger.info(
-                                f"[AgentRuntime] {market.question[:50]}: "
-                                f"agent={agent_name} prob={ai_probability:.2%} | "
-                                f"implied={implied_prob:.2%} | odds={odds:.2f}:1"
-                            )
-                        elif result and result.error_message:
-                            logger.warning(
-                                f"[AgentRuntime] FAILED {market.question[:50]}: {result.error_message}"
+                                bet_id=bet.id,
+                                stake=bet.stake,
+                                outcome=underdog_outcome,
                             )
                     except Exception as e:
-                        logger.error(f"[AgentRuntime] ERROR {market.question[:50]}: {e}")
-
-                # Fallback to legacy agents if runtime failed or unavailable
-                if ai_probability is None and self._ai_agents:
-                    try:
-                        ai_probability, ai_analysis = loop.run_until_complete(
-                            self._analyze_market(market)
-                        )
-                        if ai_probability is not None:
-                            agent_name = "LegacyAgents"
-                            logger.info(
-                                f"[Legacy] {market.question[:50]}: "
-                                f"prob={ai_probability:.2%} | implied={implied_prob:.2%} | odds={odds:.2f}:1"
-                            )
-                    except Exception as e:
-                        logger.error(f"[Legacy] FAILED {market.question[:50]}: {e}")
-
-                # Decision Gate
-                decision = "SKIP"
-                if self._decision_gate and ai_probability is not None:
-                    edge = (ai_probability * odds) - 1.0
-                    decision = self._decision_gate.evaluate_edge(edge, ai_probability, implied_prob)
-                    logger.info(
-                        f"Decision for {market.question[:50]}: {decision} "
-                        f"(edge={edge:+.1%}, ai={ai_probability:.1%}, market={implied_prob:.1%})"
-                    )
-
-                    # Cache the result
-                    self._cache.set_cache(
-                        market_id=market.id,
-                        question=market.question,
-                        yes_price=market.yes_price,
-                        no_price=market.no_price,
-                        probability=ai_probability,
-                        confidence=None,
-                        reasoning=ai_analysis,
-                        agent_name=agent_name,
-                        decision=decision,
-                    )
+                        logger.error(f"Failed to write audit trail for {market.id}: {e}")
 
                     if decision == "REJECT":
                         logger.info(f"Skipping {market.question[:50]} — no value edge")
-                        continue
 
-                # Paper trading: record bet
-                bet = None
-                if self._portfolio and decision == "ACCEPT":
-                    bet = self._portfolio.record_bet(
-                        market_id=market.id,
-                        question=market.question,
-                        outcome=underdog_outcome,
-                        price=underdog_price,
-                        probability_ai=ai_probability,
-                        analysis_summary=ai_analysis,
-                    )
-                    if bet:
+                    # Paper trading: record bet and send alert
+                    if self._portfolio and decision == "ACCEPT" and bet:
                         sent += 1 if self._sender.send_paper_bet(
                             market, bet, self._portfolio.bankroll,
                             probability_ai=ai_probability,
                             analysis_summary=ai_analysis
                         ) else 0
-                elif not self._portfolio:
-                    sent += 1 if self._sender.send(market) else 0
-        finally:
-            # Clean up: close all agent clients and the loop
-            if self._ai_agents:
-                for agent in self._ai_agents:
-                    if agent._llm_client:
-                        try:
-                            loop.run_until_complete(agent._llm_client.close())
-                        except Exception:
-                            pass
-            try:
-                loop.run_until_complete(loop.shutdown_asyncgens())
-                loop.close()
-            except Exception:
-                pass
+                    elif not self._portfolio:
+                        sent += 1 if self._sender.send(market) else 0
+            finally:
+                # Clean up: close all agent clients and the loop
+                if self._ai_agents:
+                    for agent in self._ai_agents:
+                        if agent._llm_client:
+                            try:
+                                loop.run_until_complete(agent._llm_client.close())
+                            except Exception:
+                                pass
+                try:
+                    loop.run_until_complete(loop.shutdown_asyncgens())
+                    loop.close()
+                except Exception:
+                    pass
 
-        # Check resolutions for paper portfolio
+        # Check resolutions for paper portfolio — always runs, even in resolve_only mode
         if self._portfolio and self._resolver:
             resolved = self._resolver.resolve_portfolio(self._portfolio)
             stats = self._portfolio.stats()

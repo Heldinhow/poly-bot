@@ -48,6 +48,9 @@ Resolution date: {task.resolution_date or "Not specified"}
 
 ```json
 {{
+  "truth_claims": [
+    {{"content": "Key fact or data point used", "source": "web_search:URL or tool_name", "weight": 0.0-1.0}}
+  ],
   "probability": 0.XX,
   "confidence": 0.XX,
   "reasoning": "...",
@@ -55,6 +58,10 @@ Resolution date: {task.resolution_date or "Not specified"}
 }}
 ```
 
+- `truth_claims`: list of key facts and data points you used to form your assessment. Be specific and precise.
+  - `content`: the specific fact, statistic, or observation
+  - `source`: the tool or search that produced this (e.g., "web_search:ESPN", "bash:curl_result")
+  - `weight`: how heavily this influenced your probability estimate (0.0 to 1.0)
 - `probability`: your estimated true probability (0.0 to 1.0)
 - `confidence`: how confident you are in this estimate (0.0 to 1.0)
 - `reasoning`: concise explanation of your analysis

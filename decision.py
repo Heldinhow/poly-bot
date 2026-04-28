@@ -69,16 +69,12 @@ class DecisionGate:
             )
             return "REJECT"
         
-        # Strong edge (>15%) → HIGH conviction
-        if edge >= 0.15:
-            return "HIGH"
-        
-        # Moderate edge (5-15%) → MEDIUM
+        # Moderate edge (5-15%) → ACCEPT
         if edge >= 0.05:
-            return "MEDIUM"
-        
-        # Weak edge (<5% but >min_edge) → LOW
-        return "LOW"
+            return "ACCEPT"
+
+        # Weak edge (<5% but >min_edge) → REJECT
+        return "REJECT"
 
     def should_bet(self, probability: float) -> bool:
         """Return True if probability is HIGH conviction."""

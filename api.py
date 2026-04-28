@@ -12,6 +12,9 @@ from uuid import UUID
 from aiohttp import web
 
 from db.agent_repository import AgentRepository
+from db.truth_claim_repository import TruthClaimRepository
+from db.decision_factor_repository import DecisionFactorRepository
+from db.execution_summary_repository import ExecutionSummaryRepository
 
 
 # Remove control chars invalid in JSON (allow \n, \r, \t)
@@ -80,6 +83,9 @@ class APIHandler:
         self._skill_repo = SkillRepository()
         self._execution_repo = ExecutionRepository()
         self._agent_skill_repo = AgentSkillRepository()
+        self._truth_repo = TruthClaimRepository()
+        self._factor_repo = DecisionFactorRepository()
+        self._summary_repo = ExecutionSummaryRepository()
 
     def _safe_stats(self):
         with self._lock:
@@ -410,6 +416,74 @@ class APIHandler:
             return web.json_response({"error": str(e)}, status=500)
 
     # ------------------------------------------------------------------
+    # Audit Trail
+    # ------------------------------------------------------------------
+
+    async def get_market_audit(self, request):
+        """GET /api/audit/market/:market_id — full audit trail for a market."""
+        try:
+            market_id = request.match_info["market_id"]
+            summary = self._summary_repo.get_market_summary(market_id)
+            if not summary:
+                return web.json_response({"error": "Not found"}, status=404)
+            factors = self._factor_repo.list_by_market(market_id)
+            # Fetch truth claims for each execution_log_id
+            all_claims = []
+            for factor in factors:
+                exec_id = factor.get("execution_log_id")
+                if exec_id:
+                    try:
+                        claims = self._truth_repo.list_by_execution(exec_id)
+                        all_claims.extend(claims)
+                    except Exception:
+                        pass
+            return web.json_response(_serialize_json({
+                "summary": summary,
+                "decision_factors": factors,
+                "truth_claims": all_claims,
+            }))
+        except Exception as e:
+            logger.exception("Error in GET /api/audit/market/:market_id")
+            return web.json_response({"error": str(e)}, status=500)
+
+    async def list_decisions(self, request):
+        """GET /api/audit/decisions?decision=REJECT&since=... — filterable decision log."""
+        try:
+            decision = request.query.get("decision")
+            since_str = request.query.get("since")
+            since = datetime.fromisoformat(since_str) if since_str else None
+            limit = int(request.query.get("limit", "100"))
+            offset = int(request.query.get("offset", "0"))
+            factors = self._factor_repo.list_by_decision(
+                decision, since=since, limit=limit, offset=offset
+            )
+            return web.json_response(_serialize_json(factors))
+        except Exception as e:
+            logger.exception("Error in GET /api/audit/decisions")
+            return web.json_response({"error": str(e)}, status=500)
+
+    async def list_execution_summaries(self, request):
+        """GET /api/audit/summary?decision=HIGH&limit=50 — paginated dashboard view."""
+        try:
+            decision = request.query.get("decision")
+            since_str = request.query.get("since")
+            since = datetime.fromisoformat(since_str) if since_str else None
+            bet_result = request.query.get("bet_result")
+            limit = int(request.query.get("limit", "100"))
+            offset = int(request.query.get("offset", "0"))
+            summaries = self._summary_repo.list_summaries(
+                decision=decision, since=since, bet_result=bet_result,
+                limit=limit, offset=offset
+            )
+            return web.json_response(_serialize_json({
+                "items": summaries,
+                "next_cursor": None,
+            }))
+        except Exception as e:
+            logger.exception("Error in GET /api/audit/summary")
+            return web.json_response({"error": str(e)}, status=500)
+
+    # ------------------------------------------------------------------
     # Scan Control
     # ------------------------------------------------------------------
 
@@ -524,6 +598,11 @@ def create_app(portfolio, scan_controller=None):
     app.router.add_get("/api/executions", handler.list_executions)
     app.router.add_get("/api/executions/{id}", handler.get_execution)
     app.router.add_get("/api/executions/{id}/steps", handler.get_execution_steps)
+
+    # Audit trail routes
+    app.router.add_get("/api/audit/market/{market_id}", handler.get_market_audit)
+    app.router.add_get("/api/audit/decisions", handler.list_decisions)
+    app.router.add_get("/api/audit/summary", handler.list_execution_summaries)
 
     # Scan control routes
     app.router.add_get("/api/scan/status", handler.get_scan_status)

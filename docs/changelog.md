@@ -2,6 +2,11 @@
 
 ## [Unreleased]
 
+### Fixed
+- **Decision Gate — no bets placed since multi-agent refactor** — `evaluate_edge()` returned `"HIGH"`/`"MEDIUM"`/`"LOW"`, but `scanner.py` checked for `"ACCEPT"`. The mismatch meant `decision == "ACCEPT"` was always false, so `record_bet()` was never called and zero bets were recorded. Fixed by making `evaluate_edge()` return `"ACCEPT"` for valid edges (≥ 5%) and `"REJECT"` for everything else.
+- **Audit API — empty dashboard** — `/api/audit/summary` returned a raw array instead of `{ items, next_cursor }`, and `/api/audit/market` used `"factors"` instead of `"decision_factors"`, both mismatched the frontend contract.
+- **Audit persistence — FK violation** — `scanner.py` used a placeholder UUID `"00000000-0000-0000-0000-000000000000"` for missing `execution_log_id`, violating the FK constraint on `decision_factors` and `execution_summary`. Changed to pass `None` (NULL) when no execution log exists.
+
 ### Added
 - **Agent Runtime (Multica-style)** — Coding agents execute in isolated workdirs with real-time tracking
   - `RuntimeManager` auto-detects installed agent CLIs (Claude Code, OpenCode, Hermes, Codex, Gemini, Pi, Cursor, Kimi, Kiro, OpenClaw)

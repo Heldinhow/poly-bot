@@ -38,6 +38,8 @@ class Result:
     runtime: str = ""
     duration_ms: int = 0
     prompt_used: str = ""
+    truth_claims: list[dict] = field(default_factory=list)
+    execution_log_id: str = ""  # UUID of the execution_logs row
 
 
 @dataclass

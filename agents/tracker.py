@@ -3,6 +3,8 @@ import logging
 from uuid import UUID
 
 from agents.runtime.models import Message, MessageType, Result, Session
+from agents.truth_extractor import TruthClaimExtractor
+from db.truth_claim_repository import TruthClaimRepository
 from db.execution_repository import ExecutionRepository
 
 logger = logging.getLogger(__name__)
@@ -13,6 +15,8 @@ class ExecutionTracker:
 
     def __init__(self, repository: ExecutionRepository | None = None):
         self._repo = repository or ExecutionRepository()
+        self._truth_repo = TruthClaimRepository()
+        self._extractor = TruthClaimExtractor()
 
     def claim(self, log_id: UUID, runtime: str) -> bool:
         """Claim an execution log for a specific runtime.
@@ -121,4 +125,12 @@ class ExecutionTracker:
         )
         if success:
             logger.info(f"Execution log finalized: id={log_id}, status={status}")
+            # Persist truth claims
+            try:
+                claims = self._extractor.extract(result)
+                if claims:
+                    self._truth_repo.create_batch(log_id, claims)
+                    logger.info(f"Truth claims saved: log={log_id}, count={len(claims)}")
+            except Exception as e:
+                logger.error(f"Failed to save truth claims for log {log_id}: {e}")
         return success

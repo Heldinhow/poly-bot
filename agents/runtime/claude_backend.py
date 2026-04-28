@@ -96,6 +96,7 @@ class ClaudeBackend(GenericBackend):
                             raw_output=raw_output,
                             input_tokens=usage.get("input_tokens", 0),
                             output_tokens=usage.get("output_tokens", 0),
+                            truth_claims=parsed.get("truth_claims", []),
                         )
             except json.JSONDecodeError:
                 continue
@@ -125,6 +126,7 @@ class ClaudeBackend(GenericBackend):
                                     raw_output=raw_output,
                                     input_tokens=usage.get("input_tokens", 0),
                                     output_tokens=usage.get("output_tokens", 0),
+                                    truth_claims=parsed.get("truth_claims", []),
                                 )
             except json.JSONDecodeError:
                 continue

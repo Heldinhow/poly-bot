@@ -11,9 +11,10 @@ import ExportActions from '@/components/ExportActions';
 import AgentsPage from '@/pages/AgentsPage';
 import SkillsPage from '@/pages/SkillsPage';
 import ExecutionsPage from '@/pages/ExecutionsPage';
-import { LayoutDashboard, Bot, FileText, Activity } from 'lucide-react';
+import AuditPage from '@/pages/AuditPage';
+import { LayoutDashboard, Bot, FileText, Activity, ShieldCheck } from 'lucide-react';
 
-type Tab = 'dashboard' | 'agents' | 'skills' | 'executions';
+type Tab = 'dashboard' | 'agents' | 'skills' | 'executions' | 'audit';
 
 function App() {
   const [activeTab, setActiveTab] = useState<Tab>('dashboard');
@@ -23,6 +24,7 @@ function App() {
     { key: 'agents', label: 'Agents', icon: <Bot className="h-4 w-4" /> },
     { key: 'skills', label: 'Skills', icon: <FileText className="h-4 w-4" /> },
     { key: 'executions', label: 'Executions', icon: <Activity className="h-4 w-4" /> },
+    { key: 'audit', label: 'Audit', icon: <ShieldCheck className="h-4 w-4" /> },
   ];
 
   return (
@@ -54,6 +56,7 @@ function App() {
         {activeTab === 'agents' && <AgentsPage />}
         {activeTab === 'skills' && <SkillsPage />}
         {activeTab === 'executions' && <ExecutionsPage />}
+        {activeTab === 'audit' && <AuditPage />}
       </main>
     </div>
   );

@@ -45,8 +45,10 @@ export function KpiRow() {
 
   const {
     bankroll,
-    initial_bankroll,
     roi_pct,
+    realized_pnl,
+    total_staked_resolved,
+    realized_roi,
     open_bets,
     resolved_bets,
     wins,
@@ -65,11 +67,11 @@ export function KpiRow() {
       icon: Wallet,
     },
     {
-      label: 'Total P&L',
-      value: `${roi_pct >= 0 ? '+' : ''}$${Math.abs(bankroll - initial_bankroll).toFixed(2)}`,
-      sub: `${roi_pct >= 0 ? '+' : ''}${roi_pct.toFixed(1)}% all time`,
-      color: roi_pct >= 0 ? ('green' as const) : ('red' as const),
-      icon: roi_pct >= 0 ? TrendingUp : TrendingDown,
+      label: 'Realized P&L',
+      value: `${realized_pnl >= 0 ? '+' : ''}$${Math.abs(realized_pnl).toFixed(2)}`,
+      sub: `ROI: ${realized_roi >= 0 ? '+' : ''}${realized_roi.toFixed(1)}% (${total_staked_resolved.toFixed(0)} staked)`,
+      color: realized_pnl >= 0 ? ('green' as const) : ('red' as const),
+      icon: realized_pnl >= 0 ? TrendingUp : TrendingDown,
     },
     {
       label: 'Win Rate',

@@ -166,6 +166,7 @@ class AgentRunner:
             result.runtime = agent_runtime
             result.duration_ms = duration_ms
             result.prompt_used = prompt
+            result.execution_log_id = str(log_id)
 
             # Log result
             if result.probability is not None:
@@ -201,6 +202,7 @@ class AgentRunner:
                 runtime=agent_runtime,
                 duration_ms=duration_ms,
                 prompt_used=prompt,
+                execution_log_id=str(log_id),
             )
             self._tracker.finalize(log_id, error_result)
             self._circuit_breakers.record_failure(agent_runtime)

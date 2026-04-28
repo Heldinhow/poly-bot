@@ -187,6 +187,80 @@ CREATE INDEX IF NOT EXISTS idx_execution_logs_agent ON execution_logs(agent_id);
 CREATE INDEX IF NOT EXISTS idx_execution_logs_task ON execution_logs(task_id);
 CREATE INDEX IF NOT EXISTS idx_execution_steps_log ON execution_steps(execution_log_id, seq);
 
+-- ============================================================
+-- Execution Audit Trail
+-- ============================================================
+
+CREATE TABLE IF NOT EXISTS truth_claims (
+    id                  UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    execution_log_id    UUID REFERENCES execution_logs(id) ON DELETE CASCADE,
+    claim_type         TEXT NOT NULL DEFAULT 'fact',
+    content             TEXT NOT NULL,
+    source_reference    TEXT,
+    confidence_weight   DECIMAL(5,4),
+    order_index         INT,
+    created_at          TIMESTAMPTZ DEFAULT NOW()
+);
+CREATE INDEX IF NOT EXISTS idx_truth_claims_execution ON truth_claims(execution_log_id);
+
+CREATE TABLE IF NOT EXISTS decision_factors (
+    id                      UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    execution_log_id        UUID REFERENCES execution_logs(id) ON DELETE CASCADE,
+    market_id               TEXT NOT NULL,
+    implied_probability     DECIMAL(5,4) NOT NULL,
+    ai_probability          DECIMAL(5,4) NOT NULL,
+    odds                    DECIMAL(10,4) NOT NULL,
+    edge                    DECIMAL(10,4) NOT NULL,
+    decision                TEXT NOT NULL,
+    reject_reason           TEXT,
+    bet_id                  INTEGER REFERENCES bets(id) ON DELETE SET NULL,
+    stake                   DECIMAL(12,2),
+    kelly_fraction          DECIMAL(5,2),
+    created_at              TIMESTAMPTZ DEFAULT NOW()
+);
+CREATE INDEX IF NOT EXISTS idx_decision_factors_market ON decision_factors(market_id);
+CREATE INDEX IF NOT EXISTS idx_decision_factors_decision ON decision_factors(decision);
+CREATE INDEX IF NOT EXISTS idx_decision_factors_bet ON decision_factors(bet_id);
+
+CREATE TABLE IF NOT EXISTS execution_summary (
+    id                      UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    market_id               TEXT NOT NULL UNIQUE,
+    question                TEXT,
+    yes_price_at_analysis   DECIMAL(10,4),
+    no_price_at_analysis    DECIMAL(10,4),
+    volume_24h              DECIMAL(12,2),
+    resolution_date         TEXT,
+    agent_names             TEXT[],
+    probabilities           DECIMAL(5,4)[],
+    confidences             DECIMAL(5,4)[],
+    reasoning_summary       TEXT,
+    decision                TEXT,
+    reject_reason           TEXT,
+    edge                    DECIMAL(10,4),
+    bet_id                  INTEGER REFERENCES bets(id) ON DELETE SET NULL,
+    stake                   DECIMAL(12,2),
+    outcome                 TEXT,
+    bet_result              VARCHAR(10),
+    first_execution_id      UUID REFERENCES execution_logs(id),
+    last_execution_id       UUID REFERENCES execution_logs(id),
+    execution_count         INT DEFAULT 0,
+    created_at              TIMESTAMPTZ DEFAULT NOW(),
+    updated_at              TIMESTAMPTZ DEFAULT NOW()
+);
+CREATE INDEX IF NOT EXISTS idx_execution_summary_decision ON execution_summary(decision);
+CREATE INDEX IF NOT EXISTS idx_execution_summary_created ON execution_summary(created_at);
+CREATE INDEX IF NOT EXISTS idx_execution_summary_bet_result ON execution_summary(bet_result);
+
+DO $$
+BEGIN
+    IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'execution_logs' AND column_name = 'reject_reason') THEN
+        ALTER TABLE execution_logs ADD COLUMN reject_reason TEXT;
+    END IF;
+    IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'execution_logs' AND column_name = 'odds') THEN
+        ALTER TABLE execution_logs ADD COLUMN odds DECIMAL(10,4);
+    END IF;
+END$$;
+
 -- Trigger function to auto-update updated_at
 CREATE OR REPLACE FUNCTION update_updated_at_column()
 RETURNS TRIGGER AS $$

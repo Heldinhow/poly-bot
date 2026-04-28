@@ -109,7 +109,8 @@ def main() -> None:
             cycle += 1
 
             if not scan_controller.is_enabled():
-                logger.info(f"--- Cycle {cycle} --- [SCAN DISABLED]")
+                logger.info(f"--- Cycle {cycle} --- [SCAN DISABLED — resolving bets]")
+                scanner.scan(resolve_only=True)
                 time.sleep(settings.scan_interval_secs)
                 continue
 
