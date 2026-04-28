@@ -67,7 +67,7 @@ def accumulate_realized(bets: list[dict]) -> list[dict]:
     return result
 
 
-def compute_realized_stats(bets: list[dict]) -> dict:
+def compute_realized_stats(bets: list[dict], initial_bankroll: float = 50.0) -> dict:
     """Compute total realized P&L and ROI from resolved bets."""
     resolved = [b for b in bets if b.get("resolved")]
     wins = [b for b in resolved if b.get("result") == "win"]
@@ -75,7 +75,7 @@ def compute_realized_stats(bets: list[dict]) -> dict:
 
     realized_pnl_total = sum(realized_pnl(b) for b in resolved)
     total_staked = sum(b["stake"] for b in resolved)
-    realized_roi = (realized_pnl_total / total_staked * 100) if total_staked > 0 else 0.0
+    realized_roi = (realized_pnl_total / initial_bankroll * 100) if initial_bankroll > 0 else 0.0
 
     return {
         "realized_pnl": round(realized_pnl_total, 2),
@@ -241,7 +241,7 @@ class TestROI:
         ]
         stats = compute_realized_stats(bets)
         assert stats["realized_pnl"] == 20.0   # +10 + 10
-        assert stats["realized_roi"] == 100.0  # 20/20 * 100
+        assert stats["realized_roi"] == 40.0  # 20/50 * 100 (initial_bankroll=50)
 
     def test_chart_final_value_equals_total_realized_pnl(self):
         """Critical invariant: chart last value == total realized P&L."""

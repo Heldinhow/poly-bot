@@ -228,8 +228,8 @@ class PaperPortfolio:
         )
         total_staked_resolved = sum(b.stake for b in resolved)
         realized_roi = (
-            (realized_pnl / total_staked_resolved * 100)
-            if total_staked_resolved > 0 else 0.0
+            (realized_pnl / self.initial_bankroll * 100)
+            if self.initial_bankroll > 0 else 0.0
         )
 
         roi = (self.bankroll - self.initial_bankroll) / self.initial_bankroll * 100
