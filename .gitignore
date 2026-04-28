@@ -51,3 +51,4 @@ dashboard/state.json
 # Logs
 *.log
 logs/
+.worktrees/
