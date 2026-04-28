@@ -1,355 +1,574 @@
-# Roadmap: Agent Runtime Especializado em Mercados
+# Roadmap: Agent Runtime Multica-Style para Poly-Bot
 
 ## Visão
 
-Evoluir o poly-bot de um conjunto estático de 3 agents analíticos (Sports, Esports, Odds) para um **runtime dinâmico de agents especialistas**, inspirado na arquitetura do Multica. Cada aposta deve spawnar agents de pesquisa contextual que buscam dados externos antes de calcular probabilidades — transformando o bot de um "adivinhador" em um "analista informado".
+Transformar o poly-bot em um **Agent Runtime** no estilo Multica, onde cada mercado promissor gera uma *task* que é despachada para um **coding agent** (Claude Code, OpenClaw, Hermes, OpenCode). O agent executa de forma isolada, com prompt e skills configuráveis, realiza pesquisa externa via tools (web search, bash, APIs), toma decisões documentadas e reporta resultados — tudo rastreável e gerenciável via dashboard.
 
-> **Regra de ouro**: *Sempre que for apostar em algo, pesquisar primeiro. Nenhuma análise acontece no vácuo.*
+> **Regra de ouro**: *Cada aposta é uma task. Cada task é executada por um agent configurável. Cada execução é rastreável.*
 
 ---
 
 ## Motivação
 
-Hoje o poly-bot avalia mercados com base em:
-- Dados brutos do Polymarket (preço, volume, data de resolução)
-- Conhecimento estático do LLM (treinamento, não dados em tempo real)
+Hoje o poly-bot tem agents de análise embarcados em código Python (`sports_analyst.py`, etc.) que usam apenas o conhecimento estático do LLM. Isso limita o bot a tópicos onde o LLM já é bem informado.
 
-Isso funciona para esportes (onde o LLM já conhece times e jogadores), mas falha para mercados que dependem de **dados externos em tempo real**:
-- "Temperatura em Seul amanhã" → precisa da previsão do tempo atual
-- "Preço do barril de petróleo na sexta" → precisa da cotação atual do WTI/Brent
-- "Taxa de desemprego dos EUA" → precisa do último relatório do BLS
-- "Vencedor do Oscar" → precisa das odds atuais e buzz crítico
+Com um runtime de coding agents, cada mercado ganha um **agent dedicado** que pode:
+- Abrir um browser e pesquisar a previsão do tempo em Seul
+- Consultar APIs de commodities para o preço do WTI
+- Buscar notícias recentes sobre um candidato político
+- Calcular probabilidades com dados reais em mãos
+
+Tudo isso usando os mesmos runtimes que o Multica suporta: **Claude Code**, **OpenClaw**, **Hermes Agent** e **OpenCode**.
 
 ---
 
 ## Arquitetura Proposta
 
-### Conceito Central: Task-per-Market + Agent Registry
-
-Adaptamos o padrão Multica de "daemon + runtime" para o contexto do poly-bot:
+### Conceito Central: Task-per-Market + Agent Runtime
 
 ```
-┌─────────────────────────────────────────────────────────────────────┐
-│                         scanner.py (orquestrador)                    │
-│  ┌─────────────────────────────────────────────────────────────┐   │
-│  │  Para cada mercado promissor:                                │   │
-│  │  1. Classifica o tipo de mercado (weather, commodity, etc.)  │   │
-│  │  2. Spawna agents de pesquisa especializados                 │   │
-│  │  3. Agrega resultados → injeta no prompt do analista         │   │
-│  │  4. Executa agents analíticos tradicionais                   │   │
-│  │  5. Decision gate com dados enriquecidos                     │   │
-│  └─────────────────────────────────────────────────────────────┘   │
-└─────────────────────────────────────────────────────────────────────┘
+┌─────────────────────────────────────────────────────────────────────────────┐
+│                         scanner.py (orquestrador / task dispatcher)          │
+│                                                                              │
+│  Para cada mercado promissor:                                               │
+│  1. Cria uma Task (market_id, question, timestamp)                          │
+│  2. Consulta AgentRegistry → qual agent + runtime usar                      │
+│  3. Prepara exec env isolado (workdir + context files + skills)             │
+│  4. Spawna o coding agent CLI (claude / openclaw / hermes / opencode)       │
+│  5. Faz streaming do progresso → salva em execution_logs                    │
+│  6. Recebe resultado (probability, confidence, reasoning)                   │
+│  7. Decision Gate com dados enriquecidos                                    │
+└─────────────────────────────────────────────────────────────────────────────┘
                                     │
                     ┌───────────────┼───────────────┐
                     ▼               ▼               ▼
             ┌──────────┐    ┌──────────┐    ┌──────────┐
-            │ Weather  │    │Commodity │    │  News    │
-            │ Agent    │    │  Agent   │    │  Agent   │
+            │  Claude  │    │OpenClaw  │    │  Hermes  │
+            │  Code    │    │          │    │  Agent   │
             └──────────┘    └──────────┘    └──────────┘
+                    ▼               ▼               ▼
+            ┌──────────────────────────────────────────┐
+            │     Agent Prompt + Skills (AGENTS.md)    │
+            │  "Você é um analista de mercados...      │
+            │   Pesquise dados reais antes de calcular"│
+            └──────────────────────────────────────────┘
 ```
 
-### Camadas
+### Runtimes Suportados (4)
 
-| Camada | Responsabilidade | Inspiração Multica |
-|--------|------------------|-------------------|
-| **Agent Registry** | Cataloga agents disponíveis, suas capabilities e triggers | `server/pkg/agent/models.go` — registro dinâmico de providers |
-| **Market Classifier** | Determina qual(is) agent(s) de pesquisa são necessários para um mercado | Task dispatch do daemon |
-| **Research Agents** | Executam pesquisa externa (APIs, web scraping) em paralelo | Backends especializados (claude, codex, etc.) |
-| **Analysis Agents** | Recebem dados enriquecidos e calculam probabilidades | `BaseAgent` atual com prompt dinâmico |
-| **Result Aggregator** | Combina múltiplas fontes em um contexto unificado | `executeAndDrain()` + merge de usage |
-| **Decision Gate** | Avalia edge com probabilidade ajustada pelos dados reais | `decision.py` com inputs enriquecidos |
+| Runtime | CLI | Protocolo | Modelos |
+|---------|-----|-----------|---------|
+| **Claude Code** | `claude` | `stream-json` (stdout) | Claude Sonnet, Opus, Haiku |
+| **OpenClaw** | `openclaw` | JSON-RPC via stdio | Configurável por agent |
+| **Hermes Agent** | `hermes` | ACP (JSON-RPC) | Configurável por agent |
+| **OpenCode** | `opencode` | `run --format json` | Vários providers (OpenAI, Anthropic, etc.) |
+
+> **Não suportados**: Codex, Copilot, Cursor, Gemini, Pi, Kimi, Kiro.
 
 ---
 
 ## Fases de Implementação
 
-### Fase 1: Agent Registry e Classificação de Mercado (Semana 1-2)
-
-**Objetivo**: Saber *qual* agent chamar para *qual* mercado.
-
-#### 1.1 Criar `agents/registry.py`
-
-Registro central onde cada agent declara:
-- `name`: identificador único
-- `description`: o que o agent faz
-- `triggers`: lista de palavras-chave/gatilhos que ativam este agent
-- `required_apis`: quais APIs externas ele usa
-- `priority`: ordem de execução (research antes de analysis)
-
-```python
-# Exemplo de registro
-AGENT_REGISTRY = {
-    "weather_researcher": {
-        "name": "WeatherResearcher",
-        "description": "Busca previsão do tempo para cidades específicas",
-        "triggers": ["temperatura", "clima", "tempo", "weather", "chuva", "neve", "celsius", "fahrenheit"],
-        "required_apis": ["OPENWEATHER_API_KEY"],
-        "category": "research",
-        "priority": 1,
-    },
-    "commodity_researcher": {
-        "name": "CommodityResearcher", 
-        "description": "Busca cotações atuais de commodities (petróleo, ouro, etc.)",
-        "triggers": ["petróleo", "barril", "ouro", "prata", "commodity", "oil", "gold", "wti", "brent"],
-        "required_apis": ["ALPHA_VANTAGE_API_KEY"],
-        "category": "research",
-        "priority": 1,
-    },
-    # ... etc
-}
-```
-
-#### 1.2 Criar `agents/classifier.py`
-
-Classifica um mercado com base na `question` e `description`:
-
-```python
-class MarketClassifier:
-    def classify(self, market_question: str) -> list[str]:
-        """Retorna lista de agent_ids necessários para este mercado."""
-        # 1. Matching por keywords (rápido, deterministico)
-        # 2. Fallback: LLM classifica se keywords não baterem
-```
-
-**Entregável**: Dado "Temperatura máxima em Seul amanhã", retorna `["weather_researcher"]`.
-
 ---
 
-### Fase 2: Research Agents — Framework de Pesquisa (Semana 3-4)
+### Fase 1: Agent Runtime Core (Semana 1-2)
 
-**Objetivo**: Agents que buscam dados reais, não apenas "pensam".
+**Objetivo**: Ter um backend que spawna coding agents e se comunica com eles.
 
-#### 2.1 Base para Research Agents
+#### 1.1 `agents/runtime/` — Backend Unificado
 
-Criar `agents/research_base.py`:
-
-```python
-class ResearchAgent(BaseAgent):
-    """Agent especializado em buscar dados externos, não em calcular probabilidades."""
-    
-    async def research(self, context: dict) -> ResearchResult:
-        """Executa pesquisa e retorna dados estruturados."""
-        raise NotImplementedError
-    
-    async def analyze(self, context: dict) -> dict:
-        """Research agents não calculam probabilidades — retornam fatos."""
-        result = await self.research(context)
-        return {
-            "type": "research_result",
-            "agent": self.name,
-            "data": result.to_dict(),
-            "confidence": result.confidence,
-        }
-```
-
-#### 2.2 Implementar Agents Concretos
-
-**WeatherResearcher** (`agents/research/weather.py`):
-- Extrai cidade e data do texto do mercado
-- Chama OpenWeatherMap / WeatherAPI
-- Retorna: temperatura prevista, condições, probabilidade de chuva, fonte
-
-**CommodityResearcher** (`agents/research/commodity.py`):
-- Extrai commodity (petróleo, ouro, etc.) do texto
-- Chama Alpha Vantage / Yahoo Finance API
-- Retorna: preço spot atual, variação 24h/7d, fonte
-
-**NewsResearcher** (`agents/research/news.py`):
-- Busca notícias recentes sobre o tema do mercado
-- Chama NewsAPI / GNews
-- Retorna: headlines recentes, sentimento, fontes
-
-**PoliticalPollResearcher** (`agents/research/polls.py`):
-- Para mercados de eleição
-- Busca polling averages (FiveThirtyEight, RealClearPolitics)
-- Retorna: últimas pesquisas, margem de erro, tendência
-
-**SportsInjuryResearcher** (`agents/research/sports_injuries.py`):
-- Para mercados esportivos
-- Busca lista de lesionados, escalações confirmadas
-- Retorna: jogadores fora, dúvidas, últimas escalações
+Criar um backend Go/Python que implementa a interface unificada do Multica:
 
 ```python
-# Exemplo de resultado estruturado
+class AgentBackend(ABC):
+    async def execute(
+        self,
+        ctx: ExecutionContext,
+        prompt: str,
+        opts: ExecOptions
+    ) -> Session:
+        """Spawna o agent CLI e retorna sessão com streaming."""
+
 @dataclass
-class ResearchResult:
-    query: str                    # o que foi pesquisado
-    data: dict                    # dados brutos
-    summary: str                  # resumo em linguagem natural
-    confidence: float             # 0-1, quão confiável é a fonte
-    source: str                   # URL ou identificador da fonte
-    timestamp: datetime           # quando a pesquisa foi feita
+class ExecOptions:
+    cwd: str                    # diretório de trabalho isolado
+    model: str                  # modelo a usar (ex: claude-sonnet-4-6)
+    system_prompt: str          # instruções do agent (inline)
+    timeout: timedelta          # timeout da task (default: 20min)
+    resume_session_id: str      # para retomar sessão anterior
+    custom_args: list[str]      # flags extras do CLI
+
+@dataclass
+class Session:
+    messages: AsyncIterator[Message]  # streaming de eventos
+    result: asyncio.Future[Result]    # resultado final
+
+class MessageType(Enum):
+    TEXT = "text"
+    THINKING = "thinking"
+    TOOL_USE = "tool_use"         # agent chamou uma tool
+    TOOL_RESULT = "tool_result"   # resultado da tool
+    STATUS = "status"             # running, idle, etc.
+    ERROR = "error"
+    LOG = "log"
 ```
 
-#### 2.3 Configuração de APIs
+Implementações concretas:
+- `ClaudeBackend`: spawna `claude -p --output-format stream-json`
+- `OpenclawBackend`: spawna `openclaw agent` com JSON-RPC
+- `HermesBackend`: spawna `hermes acp` com ACP handshake
+- `OpencodeBackend`: spawna `opencode run --format json`
 
-Adicionar ao `config.py`:
+#### 1.2 `agents/runtime/execenv.py` — Ambiente Isolado
 
-```python
-OPENWEATHER_API_KEY: str | None = None
-ALPHA_VANTAGE_API_KEY: str | None = None
-NEWSAPI_KEY: str | None = None
-SPORTS_API_KEY: str | None = None  # TheSportsDB ou similar
+Para cada task, criar um diretório isolado com:
+
+```
+~/polybot_workspaces/
+└── {workspace_id}/
+    └── {task_id_short}/
+        ├── workdir/              # cwd do agent
+        │   ├── AGENTS.md         # instruções do agent (do DB)
+        │   ├── SOUL.md           # persona/voz (do DB)
+        │   ├── COMMANDS.md       # comandos customizados (do DB)
+        │   └── .skills/          # skills injetadas
+        │       ├── weather_skill.md
+        │       └── commodity_skill.md
+        ├── output/               # artefatos gerados pelo agent
+        └── logs/                 # logs da execução
 ```
 
----
+O agent executa dentro de `workdir/`, enxergando os arquivos de contexto como o Multica faz.
 
-### Fase 3: Integração com Scanner (Semana 5-6)
+#### 1.3 `agents/runtime/prompt_builder.py` — Prompt da Task
 
-**Objetivo**: O scanner orquestra research + analysis automaticamente.
-
-#### 3.1 Novo fluxo do Scanner
+Constrói o prompt inicial que o agent recebe. Baseado no tipo de mercado:
 
 ```python
-def scan(self) -> int:
-    markets = self._client.fetch_active_markets(limit=200)
-    value_bets = self._filter_markets(markets)
-    
-    for market in value_bets:
-        # PASSO NOVO: Classifica e pesquisa
-        needed_research = self._classifier.classify(market.question)
-        research_results = self._run_research_agents(market, needed_research)
-        
-        # PASSO EXISTENTE: Análise com contexto enriquecido
-        enriched_context = {
-            "market": market,
-            "research": research_results,  # NOVO!
-        }
-        ai_probability, ai_analysis = self._run_analysis_agents(enriched_context)
-        
-        # Decision gate com dados reais
-        decision = self._decision_gate.evaluate(...)
-```
+def build_task_prompt(market: Market, agent: AgentConfig) -> str:
+    return f"""You are running as an analysis agent for a Polymarket betting bot.
 
-#### 3.2 `ResearchOrchestrator`
-
-Criar `scanner.py` → método `_run_research_agents()`:
-
-```python
-async def _run_research_agents(self, market, agent_ids: list[str]) -> list[dict]:
-    """Executa todos os research agents necessários em paralelo."""
-    agents = [self._registry.get(a) for a in agent_ids]
-    tasks = [agent.research({"market": market}) for agent in agents]
-    results = await asyncio.gather(*tasks, return_exceptions=True)
-    
-    # Filtra falhas, loga erros
-    return [r for r in results if not isinstance(r, Exception)]
-```
-
-#### 3.3 Prompt Dinâmico para Analysis Agents
-
-Atualizar `BaseAgent.prompt` (ou criar `EnrichedAnalysisAgent`) para incluir dados de pesquisa:
-
-```python
-@property
-def prompt(self) -> str:
-    return f"""You are {self.name}, {self.role}
-
-You are analyzing a prediction market. In addition to your own knowledge,
-you have access to REAL-TIME RESEARCH DATA collected specifically for this market.
+Your task is to evaluate this prediction market and estimate the true probability.
 
 ## Market
-Question: {{market.question}}
-Underdog price: {{market.underdog_price:.2%}}
+Question: {market.question}
+Yes price: {market.yes_price:.2%}
+No price: {market.no_price:.2%}
+Volume 24h: ${market.volume_24h:,.0f}
+Resolution date: {market.resolution_date}
 
-## External Research Data
-{% for result in research_results %}
-### {{ result.agent }}
-{{ result.summary }}
-Source: {{ result.source }} (confidence: {{ result.confidence }})
-{% endfor %}
-
-## Your Task
-Estimate the TRUE probability of the underdog winning, INCORPORATING the
-research data above. If the research contradicts your prior knowledge,
-trust the research data (it's from authoritative sources fetched just now).
-
-Respond ONLY with JSON:
-{{"probability": 0.XX, "confidence": 0.XX, "reasoning": "Brief explanation"}}
+## Instructions
+1. First, RESEARCH the topic using available tools (web search, APIs, bash)
+2. Gather real-time data relevant to this market
+3. Calculate the TRUE probability of the outcome
+4. Respond with JSON:
+   {{"probability": 0.XX, "confidence": 0.XX, "reasoning": "...", "sources": ["..."]}}
 """
 ```
 
 ---
 
-### Fase 4: Cache e Resiliência (Semana 7-8)
+### Fase 2: Tracking de Execução (Semana 3)
 
-**Objetivo**: Não pesquisar a mesma coisa 2x; sobreviver a falhas de API.
+**Objetivo**: Cada execução de agent é rastreável passo a passo.
 
-#### 4.1 Cache de Pesquisa
-
-Tabela `research_cache` no PostgreSQL:
+#### 2.1 Tabela `execution_logs`
 
 ```sql
-CREATE TABLE research_cache (
+CREATE TABLE execution_logs (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-    query_hash TEXT NOT NULL UNIQUE,  -- hash normalizado da query
-    agent_type TEXT NOT NULL,
-    result_json JSONB NOT NULL,
-    fetched_at TIMESTAMP NOT NULL DEFAULT NOW(),
-    expires_at TIMESTAMP NOT NULL,    -- TTL por tipo (clima: 1h, commodity: 15min)
-    hit_count INT DEFAULT 1
+    task_id TEXT NOT NULL,
+    market_id TEXT NOT NULL,
+    agent_id UUID REFERENCES agents(id),
+    runtime TEXT NOT NULL,              -- claude | openclaw | hermes | opencode
+    model TEXT,
+    
+    -- Status pipeline
+    status TEXT NOT NULL DEFAULT 'queued',  -- queued | running | completed | failed | cancelled
+    
+    -- Timing
+    queued_at TIMESTAMP DEFAULT NOW(),
+    started_at TIMESTAMP,
+    completed_at TIMESTAMP,
+    duration_ms INT,
+    
+    -- Resultado
+    probability DECIMAL(5,4),           -- 0.0000 a 1.0000
+    confidence DECIMAL(5,4),
+    reasoning TEXT,
+    sources JSONB,
+    raw_output TEXT,                    -- output completo do agent
+    
+    -- Error tracking
+    error_message TEXT,
+    failure_reason TEXT,                -- timeout | agent_error | runtime_offline
+    
+    -- Token usage (por runtime que reportar)
+    input_tokens BIGINT DEFAULT 0,
+    output_tokens BIGINT DEFAULT 0,
+    cache_read_tokens BIGINT DEFAULT 0,
+    cache_write_tokens BIGINT DEFAULT 0,
+    
+    created_at TIMESTAMP DEFAULT NOW()
 );
 
-CREATE INDEX idx_research_cache_lookup ON research_cache(query_hash, agent_type);
+CREATE INDEX idx_execution_logs_market ON execution_logs(market_id);
+CREATE INDEX idx_execution_logs_status ON execution_logs(status);
+CREATE INDEX idx_execution_logs_agent ON execution_logs(agent_id);
 ```
 
-Políticas de TTL:
-- Weather: 1 hora (previsão não muda drasticamente em minutos)
-- Commodity: 15 minutos (preços são voláteis)
-- News: 30 minutos (notícias envelhecem rápido)
-- Sports: 2 horas (escalações não mudam a cada minuto)
+#### 2.2 Tabela `execution_steps`
 
-#### 4.2 Circuit Breaker
+Tracking granular de cada passo do agent:
 
-Se uma API externa falhar 3x seguidas:
-- Desativa o agent por 10 minutos
-- Loga o erro
-- O scanner continua com os outros agents / sem pesquisa
+```sql
+CREATE TABLE execution_steps (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    execution_log_id UUID REFERENCES execution_logs(id),
+    seq INT NOT NULL,                   -- ordem do passo
+    
+    step_type TEXT NOT NULL,            -- text | thinking | tool_use | tool_result | error | status
+    content TEXT,                       -- texto/thinking do agent
+    
+    -- Para tool_use / tool_result
+    tool_name TEXT,                     -- ex: web_search, bash, fetch_url
+    tool_input JSONB,                   -- parâmetros da tool
+    tool_output TEXT,                   -- resultado da tool
+    tool_call_id TEXT,                  -- ID para parear use <-> result
+    
+    -- Metadata
+    duration_ms INT,
+    created_at TIMESTAMP DEFAULT NOW()
+);
+
+CREATE INDEX idx_execution_steps_log ON execution_steps(execution_log_id, seq);
+```
+
+#### 2.3 `ExecutionTracker` — Streaming para DB
 
 ```python
-class CircuitBreaker:
-    def call(self, fn, *args, **kwargs):
-        if self.is_open:
-            raise CircuitBreakerOpen(f"{self.name} is temporarily disabled")
-        try:
-            return fn(*args, **kwargs)
-        except Exception:
-            self.record_failure()
-            raise
+class ExecutionTracker:
+    """Consome o stream de mensagens do agent e persiste em tempo real."""
+    
+    async def track(self, log_id: str, session: Session):
+        seq = 0
+        async for msg in session.messages:
+            seq += 1
+            await self._save_step(log_id, seq, msg)
+            
+    async def finalize(self, log_id: str, result: Result):
+        await self._update_log(log_id, result)
 ```
 
-#### 4.3 Fallback para Analysis "Puro"
-
-Se TODOS os research agents falharem:
-- O scanner cai no comportamento atual: analysis com apenas dados do mercado
-- Log: "Research unavailable, falling back to static analysis"
+Isso permite ver em tempo real o que o agent está fazendo: "Tool #1: web_search('previsão tempo Seul')", "Tool #2: fetch_url('...')", etc.
 
 ---
 
-### Fase 5: Novos Tipos de Mercado (Semana 9-10)
+### Fase 3: Dashboard — Gestão de Agents e Skills (Semana 4-5)
 
-**Objetivo**: Expandir para mercados que hoje o bot ignora por falta de dados.
+**Objetivo**: Interface web para criar, editar e monitorar agents.
 
-#### 5.1 Agents Novos (pós-MVP)
+#### 3.1 Nova Aba: "Agents" (CRUD)
 
-| Agent | API | Mercados |
-|-------|-----|----------|
-| `CryptoResearcher` | CoinGecko / CoinMarketCap | Preço de BTC, ETH, etc. |
-| `EconomicDataResearcher` | FRED (Federal Reserve) | Taxa de juros, inflação, PIB |
-| `SocialSentimentResearcher` | Twitter/X API, Reddit | Buzz social, tendências |
-| `FlightDelayResearcher` | AviationStack | Atrasos de voos específicos |
-| `EarthquakeResearcher` | USGS | Terremotos por magnitude/região |
+Tela de gestão de agents no dashboard React:
 
-#### 5.2 Detecção Automática de Entidades
+```
+┌─────────────────────────────────────────────────────────────┐
+│  Agents                                      [+ New Agent]  │
+├─────────────────────────────────────────────────────────────┤
+│                                                             │
+│  ┌─────────────┐  ┌─────────────┐  ┌─────────────┐         │
+│  │ WeatherBot  │  │ OilAnalyst  │  │ ElectionBot │         │
+│  │ Claude Code │  │ OpenClaw    │  │ Hermes      │         │
+│  │ Model: ...  │  │ Model: ...  │  │ Model: ...  │         │
+│  │ [Edit] [▶]  │  │ [Edit] [▶]  │  │ [Edit] [▶]  │         │
+│  └─────────────┘  └─────────────┘  └─────────────┘         │
+│                                                             │
+└─────────────────────────────────────────────────────────────┘
+```
 
-Usar NER (Named Entity Recognition) — ou simplesmente LLM — para extrair do texto do mercado:
-- **Localização**: "Seul", "Nova York", "Tokyo"
-- **Data**: "amanhã", "próxima sexta", "15 de maio"
-- **Commodity**: "WTI", "Brent", "ouro", "prata"
-- **Evento**: "Oscar", "Super Bowl", "eleição presidencial"
+**Formulário de criação/edição**:
+- **Name**: identificador único (ex: "WeatherBot")
+- **Runtime**: dropdown (Claude Code | OpenClaw | Hermes | OpenCode)
+- **Model**: dropdown dinâmico baseado no runtime selecionado
+- **System Prompt**: textarea com o prompt base do agent
+- **Skills**: multi-select das skills disponíveis
+- **Max Concurrent Tasks**: número máximo de tasks paralelas
+- **Custom Args**: flags extras do CLI (array de strings)
+- **Custom Env**: variáveis de ambiente (key-value)
+- **Active**: toggle on/off
 
-Isso permite que o agent saiba *o quê* pesquisar sem regex frágil.
+**Tabela `agents`**:
+```sql
+CREATE TABLE agents (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    name TEXT NOT NULL UNIQUE,
+    description TEXT,
+    
+    -- Runtime config
+    runtime TEXT NOT NULL CHECK (runtime IN ('claude', 'openclaw', 'hermes', 'opencode')),
+    model TEXT,
+    system_prompt TEXT,
+    
+    -- Skills vinculadas
+    skills UUID[] DEFAULT '{}',
+    
+    -- Limits
+    max_concurrent_tasks INT DEFAULT 1,
+    
+    -- Advanced
+    custom_args TEXT[] DEFAULT '{}',
+    custom_env JSONB DEFAULT '{}',
+    
+    -- Status
+    is_active BOOLEAN DEFAULT true,
+    is_archived BOOLEAN DEFAULT false,
+    
+    created_at TIMESTAMP DEFAULT NOW(),
+    updated_at TIMESTAMP DEFAULT NOW()
+);
+```
+
+#### 3.2 Nova Aba: "Skills" (Editor)
+
+Editor de skills no padrão Multica — cada skill é um **arquivo markdown** que é injetado no contexto do agent:
+
+```
+┌─────────────────────────────────────────────────────────────┐
+│  Skills                                      [+ New Skill]  │
+├─────────────────────────────────────────────────────────────┤
+│                                                             │
+│  ┌──────────────────┐  ┌────────────────────────────────┐  │
+│  │ Sidebar          │  │ Editor                         │  │
+│  │ ─────────────    │  │ ┌────────────────────────────┐ │  │
+│  │ weather_skill    │  │ │ Name: weather_research     │ │  │
+│  │ commodity_skill  │  │ │                            │ │  │
+│  │ sports_injuries  │  │ │ ## Weather Research        │ │  │
+│  │ news_search      │  │ │                            │ │  │
+│  │                  │  │ │ When researching weather   │ │  │
+│  │                  │  │ │ markets:                   │ │  │
+│  │                  │  │ │ 1. Use OpenWeatherMap API  │ │  │
+│  │                  │  │ │ 2. Check forecast for the  │ │  │
+│  │                  │  │ │    exact date              │ │  │
+│  │                  │  │ │ 3. Note confidence levels  │ │  │
+│  │                  │  │ │                            │ │  │
+│  │                  │  │ │ [Save] [Delete]            │ │  │
+│  │                  │  │ └────────────────────────────┘ │  │
+│  └──────────────────┘  └────────────────────────────────┘  │
+│                                                             │
+└─────────────────────────────────────────────────────────────┘
+```
+
+**Tabela `skills`**:
+```sql
+CREATE TABLE skills (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    name TEXT NOT NULL,
+    description TEXT,
+    content TEXT NOT NULL,           -- conteúdo markdown da skill
+    
+    -- Metadados
+    file_count INT DEFAULT 0,
+    is_active BOOLEAN DEFAULT true,
+    
+    created_at TIMESTAMP DEFAULT NOW(),
+    updated_at TIMESTAMP DEFAULT NOW()
+);
+
+-- Tabela de junção
+CREATE TABLE agent_skills (
+    agent_id UUID REFERENCES agents(id) ON DELETE CASCADE,
+    skill_id UUID REFERENCES skills(id) ON DELETE CASCADE,
+    PRIMARY KEY (agent_id, skill_id)
+);
+```
+
+**Como funciona a injeção de skills**:
+- Quando uma task é despachada, o `execenv.py` escreve cada skill vinculada ao agent como um arquivo `.md` dentro de `.skills/`
+- O prompt do agent inclui: *"You have access to the following skills in .skills/ directory. Read them before proceeding."*
+- Cada runtime lê os arquivos conforme sua convenção:
+  - **Claude Code**: lê `AGENTS.md`, `.skills/*.md` automaticamente
+  - **OpenClaw**: skills passadas via `--skill` ou diretório
+  - **Hermes**: injetado no system prompt ou via ACP
+  - **OpenCode**: diretório de skills configurado
+
+#### 3.3 Nova Aba: "Executions" (Monitoramento)
+
+Visualização de todas as execuções de agents:
+
+```
+┌─────────────────────────────────────────────────────────────┐
+│  Executions                                    [Filters ▼]  │
+├─────────────────────────────────────────────────────────────┤
+│                                                             │
+│  Market                          Agent      Runtime  Status │
+│  ─────────────────────────────────────────────────────────  │
+│  Temp em Seul >25°C?             WeatherBot Claude   ✅ Done │
+│  WTI > $80 na sexta?             OilAnalyst OpenClaw ✅ Done │
+│  Trump ganha 2028?               ElectionBot Hermes  ⏳ Run  │
+│  Lakers vence hoje?              SportsBot  Claude   ❌ Fail │
+│                                                             │
+│  [Click para ver detalhes]                                  │
+│                                                             │
+└─────────────────────────────────────────────────────────────┘
+```
+
+**Tela de detalhes da execução**:
+```
+┌─────────────────────────────────────────────────────────────┐
+│  Execution #abc123 — Temp em Seul >25°C?                    │
+├─────────────────────────────────────────────────────────────┤
+│                                                             │
+│  Agent: WeatherBot (Claude Code)                            │
+│  Model: claude-sonnet-4-6                                   │
+│  Duration: 12.3s                                            │
+│  Status: ✅ Completed                                       │
+│                                                             │
+│  Result:                                                    │
+│  Probability: 0.12 (12%)                                    │
+│  Confidence: 0.85                                           │
+│  Reasoning: "OpenWeather shows max 23°C for Seoul..."       │
+│                                                             │
+│  Steps Timeline:                                            │
+│  ─────────────────────────────────────────────────────────  │
+│  1. [STATUS]  Agent started                                 │
+│  2. [TOOL]    web_search("Seoul weather forecast tomorrow") │
+│  3. [RESULT]  3 results found                               │
+│  4. [TOOL]    fetch_url("openweather.com/seoul")            │
+│  5. [RESULT]  Max temp: 23°C, partly cloudy                 │
+│  6. [THINK]   "23°C is 2 degrees below 25°C threshold..."   │
+│  7. [TEXT]    {"probability": 0.12, ...}                    │
+│  8. [STATUS]  Agent completed                               │
+│                                                             │
+│  Sources:                                                   │
+│  - OpenWeatherMap (confidence: 0.9)                         │
+│  - weather.com (confidence: 0.8)                            │
+│                                                             │
+│  Token Usage: 1,234 in / 567 out                            │
+│                                                             │
+└─────────────────────────────────────────────────────────────┘
+```
+
+---
+
+### Fase 4: Integração Scanner + Runtime (Semana 6)
+
+**Objetivo**: O scanner despacha tasks para o runtime de agents.
+
+#### 4.1 Novo fluxo do Scanner
+
+```python
+class Scanner:
+    def __init__(self, ...):
+        self._runtime = AgentRuntime()        # NOVO
+        self._registry = AgentRegistry()      # NOVO: lê do DB
+        self._tracker = ExecutionTracker()    # NOVO
+    
+    def scan(self) -> int:
+        markets = self._client.fetch_active_markets(limit=200)
+        value_bets = self._filter_markets(markets)
+        
+        for market in value_bets:
+            # 1. Seleciona o agent mais adequado (por classificação ou manual)
+            agent = self._registry.select_agent_for_market(market)
+            
+            # 2. Cria task e despacha para o runtime
+            task = Task(market=market, agent=agent)
+            result = self._runtime.run(task)
+            
+            # 3. Decision gate com o resultado do agent
+            if result.probability:
+                edge = self._decision_gate.evaluate(
+                    probability=result.probability,
+                    confidence=result.confidence,
+                    market_price=market.implied_prob
+                )
+                if edge == "ACCEPT":
+                    self._portfolio.record_bet(market, result)
+```
+
+#### 4.2 `AgentRegistry.select_agent_for_market()`
+
+Regra de seleção (configurável):
+1. Se o mercado bate com `triggers` de um agent específico → usa esse agent
+2. Senão, usa o agent `default` (análise genérica)
+3. Se múltiplos agents batem → roda todos em paralelo e agrega (ensemble)
+
+---
+
+### Fase 5: Política de Skills Padrão (Semana 7)
+
+**Objetivo**: Skills pré-criadas para os tipos de mercado mais comuns.
+
+#### 5.1 Skills Iniciais
+
+**`weather_skill.md`**:
+```markdown
+# Weather Market Research
+
+When analyzing weather prediction markets:
+
+1. Identify the exact location (city, country) from the market question
+2. Identify the exact date from the market question
+3. Use OpenWeatherMap or WeatherAPI to fetch the forecast
+4. Report: temperature, conditions, precipitation probability
+5. Note forecast reliability (24h vs 7-day forecasts differ in accuracy)
+
+API Key: Use env var OPENWEATHER_API_KEY
+```
+
+**`commodity_skill.md`**:
+```markdown
+# Commodity Market Research
+
+When analyzing commodity markets (oil, gold, etc.):
+
+1. Identify the exact commodity and benchmark (WTI, Brent, spot, etc.)
+2. Use Yahoo Finance or Alpha Vantage for current spot price
+3. Check recent trend (24h, 7d)
+4. Note relevant news (OPEC decisions, geopolitical events)
+
+API Key: Use env var ALPHA_VANTAGE_API_KEY
+```
+
+**`news_search_skill.md`**:
+```markdown
+# News Research
+
+When you need recent information about an event:
+
+1. Use web_search to find the latest news
+2. Check authoritative sources (Reuters, Bloomberg, AP)
+3. Note publication dates — old news may be irrelevant
+4. Summarize key facts that affect the market outcome
+```
+
+#### 5.2 AGENTS.md Padrão
+
+Cada agent tem um `AGENTS.md` gerado dinamicamente do banco:
+
+```markdown
+# Agent: {agent.name}
+
+## Role
+{agent.description}
+
+## Runtime
+{agent.runtime} ({agent.model})
+
+## Instructions
+{agent.system_prompt}
+
+## Available Skills
+{for skill in agent.skills}
+- {skill.name}: {skill.description}
+{/for}
+
+## Important Rules
+1. Always research with tools before calculating probability
+2. Cite your sources
+3. Respond in the required JSON format
+```
 
 ---
 
@@ -359,29 +578,47 @@ Isso permite que o agent saiba *o quê* pesquisar sem regex frágil.
 poly-bot/
 ├── agents/
 │   ├── __init__.py
-│   ├── base.py                    # BaseAgent (analysis)
-│   ├── research_base.py           # ResearchAgent (pesquisa externa)
-│   ├── registry.py                # AgentRegistry + classificação
-│   ├── classifier.py              # MarketClassifier (NER/keywords)
-│   ├── orchestrator.py            # ResearchOrchestrator (async gather)
-│   ├── cache.py                   # ResearchCache (PostgreSQL)
-│   ├── circuit_breaker.py         # Resiliência de APIs
-│   ├── sports_analyst.py          # existente
-│   ├── esports_analyst.py         # existente
-│   ├── odds_analyst.py            # existente
-│   └── research/                  # NOVO: agents de pesquisa
-│       ├── __init__.py
-│       ├── weather.py             # WeatherResearcher
-│       ├── commodity.py           # CommodityResearcher
-│       ├── news.py                # NewsResearcher
-│       ├── polls.py               # PoliticalPollResearcher
-│       ├── sports_injuries.py     # SportsInjuryResearcher
-│       └── crypto.py              # CryptoResearcher (fase 5)
+│   ├── base.py                    # BaseAgent legacy (mantido)
+│   ├── runtime/                   # NOVO: runtime de coding agents
+│   │   ├── __init__.py
+│   │   ├── backend.py             # AgentBackend interface
+│   │   ├── claude_backend.py      # Claude Code integration
+│   │   ├── openclaw_backend.py    # OpenClaw integration
+│   │   ├── hermes_backend.py      # Hermes ACP integration
+│   │   ├── opencode_backend.py    # OpenCode integration
+│   │   ├── execenv.py             # Isolated workdir prep
+│   │   ├── prompt_builder.py      # Task prompt construction
+│   │   ├── models.py              # dataclasses (Session, Result, Message)
+│   │   └── version.py             # CLI version detection
+│   ├── registry.py                # AgentRegistry (DB-backed)
+│   ├── classifier.py              # Market-to-Agent matching
+│   ├── tracker.py                 # ExecutionTracker (DB streaming)
+│   ├── cache.py                   # Research cache (mantido)
+│   └── circuit_breaker.py         # Resiliência (mantido)
+│
 ├── db/
-│   ├── schema.sql                 # + research_cache table
-│   └── repository.py              # + ResearchCacheRepository
-├── scanner.py                     # refatorado: research + analysis
-├── config.py                      # + API keys
+│   ├── schema.sql                 # + agents, skills, execution_logs, execution_steps
+│   └── repository.py              # + AgentRepository, SkillRepository, ExecutionRepository
+│
+├── scanner.py                     # refatorado: task dispatcher
+├── config.py                      # + runtime paths, API keys
+│
+├── frontend/                      # React dashboard (existente)
+│   └── src/
+│       ├── components/
+│       │   ├── agents/            # NOVO: AgentCard, AgentForm, AgentList
+│       │   ├── skills/            # NOVO: SkillEditor, SkillList
+│       │   ├── executions/        # NOVO: ExecutionTimeline, ExecutionDetail
+│       │   └── layout/
+│       ├── hooks/
+│       │   ├── useAgents.ts       # CRUD agents
+│       │   ├── useSkills.ts       # CRUD skills
+│       │   └── useExecutions.ts   # list + detail
+│       └── pages/
+│           ├── AgentsPage.tsx       # NOVO
+│           ├── SkillsPage.tsx       # NOVO
+│           └── ExecutionsPage.tsx   # NOVO
+│
 └── docs/
     └── roadmap.md                 # este arquivo
 ```
@@ -392,45 +629,63 @@ poly-bot/
 
 ### Mercado: "Temperatura máxima em Seul > 25°C amanhã?"
 
-**Passo 1 — Classificação**:
+**Passo 1 — Seleção de Agent**:
 ```python
-classifier.classify("Temperatura máxima em Seul > 25°C amanhã?")
-# → ["weather_researcher"]
+registry.select_agent_for_market("Temperatura máxima em Seul > 25°C amanhã?")
+# → Agent(name="WeatherBot", runtime="claude", model="claude-sonnet-4-6")
 ```
 
-**Passo 2 — Pesquisa**:
+**Passo 2 — Preparação do Ambiente**:
 ```python
-weather_researcher.research({
-    "city": "Seoul",
-    "country": "KR", 
-    "date": "2026-04-29",
-    "metric": "max_temp"
-})
-# → ResearchResult(
-#     query="max temp Seoul 2026-04-29",
-#     data={"temp_c": 23, "condition": "Partly cloudy", "humidity": 65},
-#     summary="Previsão: máxima de 23°C, parcialmente nublado. Probabilidade de >25°C: baixa (~15%)",
-#     confidence=0.9,
-#     source="OpenWeatherMap",
-#     timestamp=now()
-# )
+execenv.prepare(
+    workdir="~/polybot_workspaces/ws1/abc123/workdir/",
+    agent=weather_bot,
+    skills=["weather_skill.md", "news_search_skill.md"]
+)
+# Cria workdir/ com AGENTS.md, .skills/weather_skill.md, etc.
 ```
 
-**Passo 3 — Análise Enriquecida**:
+**Passo 3 — Execução**:
 ```python
-sports_analyst.analyze({
-    "market": market,
-    "research": [weather_result]
-})
-# O prompt agora inclui: "Previsão: máxima de 23°C... Probabilidade de >25°C: baixa (~15%)"
-# → {"probability": 0.12, "confidence": 0.85, "reasoning": "Weather data shows max 23°C, 2 degrees below threshold"}
+backend = ClaudeBackend(executable="claude")
+session = backend.execute(
+    prompt=build_task_prompt(market, weather_bot),
+    opts=ExecOptions(cwd=workdir, model="claude-sonnet-4-6")
+)
 ```
 
-**Passo 4 — Decision Gate**:
-- Market implied prob: 35% (preço do "Yes")
+**Passo 4 — Tracking em Tempo Real**:
+```
+[STATUS]  running
+[TOOL]    web_search: {"query": "Seoul weather forecast tomorrow April 29"}
+[RESULT]  5 results
+[TOOL]    bash: {"command": "curl -s 'api.openweathermap.org/...'"}
+[RESULT]  {"temp_max": 23, "condition": "partly cloudy"}
+[THINK]   "23°C max... 2 degrees below threshold..."
+[TEXT]    {"probability": 0.12, "confidence": 0.85, "reasoning": "..."}
+[STATUS]  completed
+```
+
+Cada mensagem é salva em `execution_steps` em tempo real.
+
+**Passo 5 — Resultado Persistido**:
+```python
+execution_logs:
+  id: "abc123"
+  status: "completed"
+  probability: 0.12
+  confidence: 0.85
+  reasoning: "OpenWeather shows max 23°C for Seoul on Apr 29"
+  sources: ["OpenWeatherMap"]
+  input_tokens: 1234
+  output_tokens: 567
+```
+
+**Passo 6 — Decision Gate**:
+- Market implied prob (Yes): 35%
 - AI prob: 12%
-- Edge: negativo
-- **Decisão**: REJECT (ou apostar no "No" se houver edge invertido)
+- Edge: -23% (negativo)
+- **Decisão**: REJECT (ou apostar no "No")
 
 ---
 
@@ -438,10 +693,15 @@ sports_analyst.analyze({
 
 ```
 # requirements.txt additions
-python-weather  # ou requests + openweather endpoint
-yfinance        # commodity prices
-newsapi-python  # notícias
-httpx           # já usado, mas necessário para APIs async
+# CLI tools (instalados separadamente pelo usuário)
+# - claude-code (npm)
+# - openclaw (npm)
+# - hermes (npm/pip)
+# - opencode (npm)
+
+# Python libs
+watchdog          # monitorar arquivos de skills
+python-dotenv     # já usado, mas necessário para runtime env
 ```
 
 ---
@@ -450,36 +710,40 @@ httpx           # já usado, mas necessário para APIs async
 
 | Métrica | Target |
 |---------|--------|
-| Mercados com research data | >80% dos mercados value-bet |
-| Cache hit rate | >60% (evita chamadas repetidas) |
-| API failure recovery | <5% de mercados perdidos por falha de API |
-| Latência de scan | <30s adicional por ciclo (com pesquisa paralela) |
-| ROI improvement | >10% relativo ao baseline (sem research) |
+| Runtimes registrados | 4/4 (Claude, OpenClaw, Hermes, OpenCode) |
+| Tasks completadas com sucesso | >90% |
+| Execuções rastreadas (steps) | 100% das tasks |
+| Dashboard funcional | CRUD agents + skills + execuções |
+| Latência task dispatch | <2s do scanner para o agent iniciar |
+| ROI improvement | >15% relativo ao baseline (agents com tools) |
 
 ---
 
 ## Decisões de Design Importantes
 
-1. **Research é obrigatório quando possível**: se um mercado tem agent de pesquisa disponível, ele DEVE rodar. Analysis "puro" só é fallback.
-2. **Paralelismo máximo**: todos os research agents rodam ao mesmo tempo com `asyncio.gather`, igual ao `scanner.py` atual.
-3. **Prompt enriquecido, não substituído**: o analysis agent ainda usa seu expertise, mas com dados reais no contexto.
-4. **Cada API é isolada**: falha na API de clima não quebra a API de commodities.
-5. **Cache inteligente**: TTL adaptativo por tipo de dado.
-6. **Observabilidade**: cada research result é logado e enviado ao Telegram como parte do alerta.
+1. **Apenas 4 runtimes**: Claude Code, OpenClaw, Hermes, OpenCode. Sem Codex/Copilot/Cursor/Gemini/Pi/Kimi/Kiro.
+2. **Task = Mercado**: cada mercado vira uma task isolada com seu próprio workdir.
+3. **Skills são markdown**: no padrão Multica, skills são arquivos `.md` injetados no contexto. Editáveis via dashboard.
+4. **Prompt editável por agent**: cada agent tem seu próprio system prompt, editável no dashboard.
+5. **Tracking obrigatório**: 100% das execuções logam steps em `execution_steps`. Sem tracking, não há observabilidade.
+6. **Execução isolada**: cada task roda em workdir próprio, com variáveis de ambiente isoladas.
+7. **Resume de sessão**: suportado via `resume_session_id` (quando o runtime suportar).
+8. **Fallback para analysis puro**: se o runtime falhar, o scanner usa os agents legados (sports_analyst, etc.).
 
 ---
 
 ## Próximos Passos Imediatos
 
-1. [ ] Criar `agents/registry.py` com os 5 research agents iniciais
-2. [ ] Implementar `MarketClassifier` com keyword matching + LLM fallback
-3. [ ] Criar `WeatherResearcher` como MVP (OpenWeatherMap, gratuito)
-4. [ ] Refatorar `scanner.py` para chamar research antes de analysis
-5. [ ] Adicionar tabela `research_cache` e `ResearchCacheRepository`
-6. [ ] Testar com 10 mercados de clima reais do Polymarket
-7. [ ] Medir ROI com vs. sem research nos primeiros 7 dias
+1. [ ] Criar `agents/runtime/backend.py` com a interface AgentBackend
+2. [ ] Implementar `ClaudeBackend` (stream-json parser)
+3. [ ] Criar `agents/runtime/execenv.py` (workdir + context files + skills injection)
+4. [ ] Adicionar tabelas `agents`, `skills`, `agent_skills`, `execution_logs`, `execution_steps`
+5. [ ] Criar `ExecutionTracker` com streaming para DB
+6. [ ] Refatorar `scanner.py` para despachar tasks para o runtime
+7. [ ] Criar páginas no dashboard: Agents, Skills, Executions
+8. [ ] Testar com Claude Code em mercado de clima real
 
 ---
 
-*Documento criado em: 2026-04-28*
-*Baseado na análise do runtime de agents do Multica (multica-ai/multica)*
+*Documento atualizado em: 2026-04-28*
+*Baseado na arquitetura do runtime de agents do Multica (multica-ai/multica)*
