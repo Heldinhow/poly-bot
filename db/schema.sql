@@ -41,6 +41,31 @@ CREATE UNIQUE INDEX IF NOT EXISTS idx_bets_unique_open
     WHERE resolved = FALSE;
 
 -- ============================================================
+-- Scan Settings (single-row runtime config)
+-- ============================================================
+
+CREATE TABLE IF NOT EXISTS scan_settings (
+    id                  INT PRIMARY KEY DEFAULT 1 CHECK (id = 1),
+    enabled             BOOLEAN DEFAULT true,
+    updated_at          TIMESTAMPTZ DEFAULT NOW()
+);
+
+-- Seed default row if not exists
+INSERT INTO scan_settings (id, enabled) VALUES (1, true)
+    ON CONFLICT (id) DO NOTHING;
+
+-- Trigger for scan_settings updated_at
+DO $$
+BEGIN
+    IF NOT EXISTS (SELECT 1 FROM pg_trigger WHERE tgname = 'trg_scan_settings_updated_at') THEN
+        CREATE TRIGGER trg_scan_settings_updated_at
+            BEFORE UPDATE ON scan_settings
+            FOR EACH ROW
+            EXECUTE FUNCTION update_updated_at_column();
+    END IF;
+END$$;
+
+-- ============================================================
 -- Agent Runtime Tables
 -- ============================================================
 

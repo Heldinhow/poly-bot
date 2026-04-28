@@ -75,7 +75,14 @@
 - **`aiohttp>=3.11.0`** dependency in `requirements.txt`
 
 ### Changed
-- **`main.py`** — starts API server after `PaperPortfolio` initialization and before the scan loop
+- **Scan control** — DB-backed enable/disable with dashboard toggle and API endpoints
+  - `scan_settings` table (single-row config) persists state across restarts
+  - `ScanController` loads from DB, falls back to `SCAN_ENABLED` env var on first boot
+  - `ScanRepository` for DB CRUD operations
+  - `main.py` scanner loop checks `ScanController.is_enabled()` before each scan
+  - Dashboard header shows "All Systems Nominal" / "Scan Paused" with Pause/Resume button
+  - API endpoints: `GET /api/scan/status`, `POST /api/scan/toggle`, `POST /api/scan/enable`, `POST /api/scan/disable`
+  - `SCAN_ENABLED` env var controls default; DB value takes precedence after first toggle
 
 ## [2.0.0] — Persistence & Trading Mode
 

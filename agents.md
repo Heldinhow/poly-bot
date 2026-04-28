@@ -67,6 +67,7 @@ All project changes are recorded in **`docs/changelog.md`**. Check this file fir
 | `INITIAL_BANKROLL` | No | 50.0 | Starting bankroll |
 | `KELLY_FRAC` | No | 0.25 | Kelly fraction (0-1) |
 | `MIN_EDGE` | No | 0.05 | Minimum edge threshold |
+| `SCAN_ENABLED` | No | `true` | Enable/disable scanning (`true` or `false`) |
 | `API_PORT` | No | 8080 | HTTP API server port |
 | `WORKSPACE_ROOT` | No | `~/polybot_workspaces` | Root directory for agent workspaces |
 | `AGENT_TIMEOUT_SECS` | No | 1200 | Max seconds per agent task (20 min) |

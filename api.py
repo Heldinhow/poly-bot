@@ -1,14 +1,37 @@
 import asyncio
 import logging
 import os
+import re
 import threading
 from concurrent.futures import ThreadPoolExecutor
+import datetime as dt
 from datetime import datetime, timedelta
 from uuid import UUID
 
 from aiohttp import web
 
 from db.agent_repository import AgentRepository
+
+
+# Remove control chars invalid in JSON (allow \n, \r, \t)
+_JSON_CTRL_RE = re.compile(r"[\x00-\x08\x0b\x0c\x0e-\x1f]")
+
+
+def _serialize_json(data):
+    """Recursively serialize datetime, date, UUID, and sanitize strings for JSON."""
+    if isinstance(data, dict):
+        return {k: _serialize_json(v) for k, v in data.items()}
+    if isinstance(data, list):
+        return [_serialize_json(v) for v in data]
+    if isinstance(data, datetime):
+        return data.isoformat()
+    if isinstance(data, dt.date) and not isinstance(data, datetime):
+        return data.isoformat()
+    if isinstance(data, UUID):
+        return str(data)
+    if isinstance(data, str):
+        return _JSON_CTRL_RE.sub("", data)
+    return data
 from db.agent_skill_repository import AgentSkillRepository
 from db.execution_repository import ExecutionRepository
 from db.skill_repository import SkillRepository
@@ -45,8 +68,9 @@ async def cors_middleware(request, handler):
 class APIHandler:
     """HTTP request handlers for the dashboard API."""
 
-    def __init__(self, portfolio):
+    def __init__(self, portfolio, scan_controller=None):
         self.portfolio = portfolio
+        self._scan_controller = scan_controller
         self._lock = threading.Lock()
         self._executor = ThreadPoolExecutor(max_workers=2)
         self._agent_repo = AgentRepository()
@@ -192,7 +216,7 @@ class APIHandler:
             # Load skills for each agent
             for agent in agents:
                 agent["skills"] = self._agent_skill_repo.get_skills_for_agent(agent["id"])
-            return web.json_response(agents)
+            return web.json_response(_serialize_json(agents))
         except Exception as e:
             logger.exception("Error in /api/agents")
             return web.json_response({"error": str(e)}, status=500)
@@ -205,7 +229,7 @@ class APIHandler:
             if not agent:
                 return web.json_response({"error": "Agent not found"}, status=404)
             agent["skills"] = self._agent_skill_repo.get_skills_for_agent(agent_id)
-            return web.json_response(agent)
+            return web.json_response(_serialize_json(agent))
         except Exception as e:
             logger.exception("Error in GET /api/agents/:id")
             return web.json_response({"error": str(e)}, status=500)
@@ -279,7 +303,7 @@ class APIHandler:
         """GET /api/skills — list all active skills."""
         try:
             skills = self._skill_repo.list_skills(active_only=True)
-            return web.json_response(skills)
+            return web.json_response(_serialize_json(skills))
         except Exception as e:
             logger.exception("Error in /api/skills")
             return web.json_response({"error": str(e)}, status=500)
@@ -291,7 +315,7 @@ class APIHandler:
             skill = self._skill_repo.get_skill_by_id(skill_id)
             if not skill:
                 return web.json_response({"error": "Skill not found"}, status=404)
-            return web.json_response(skill)
+            return web.json_response(_serialize_json(skill))
         except Exception as e:
             logger.exception("Error in GET /api/skills/:id")
             return web.json_response({"error": str(e)}, status=500)
@@ -354,7 +378,7 @@ class APIHandler:
                 limit=limit,
                 offset=offset,
             )
-            return web.json_response(executions)
+            return web.json_response(_serialize_json(executions))
         except Exception as e:
             logger.exception("Error in /api/executions")
             return web.json_response({"error": str(e)}, status=500)
@@ -366,7 +390,7 @@ class APIHandler:
             execution = self._execution_repo.get_log(log_id)
             if not execution:
                 return web.json_response({"error": "Execution not found"}, status=404)
-            return web.json_response(execution)
+            return web.json_response(_serialize_json(execution))
         except Exception as e:
             logger.exception("Error in GET /api/executions/:id")
             return web.json_response({"error": str(e)}, status=500)
@@ -376,9 +400,52 @@ class APIHandler:
         try:
             log_id = UUID(request.match_info["id"])
             steps = self._execution_repo.list_steps(log_id)
-            return web.json_response(steps)
+            return web.json_response(_serialize_json(steps))
         except Exception as e:
             logger.exception("Error in GET /api/executions/:id/steps")
+            return web.json_response({"error": str(e)}, status=500)
+
+    # ------------------------------------------------------------------
+    # Scan Control
+    # ------------------------------------------------------------------
+
+    async def get_scan_status(self, request):
+        """GET /api/scan/status — current scan enabled/disabled state."""
+        try:
+            if self._scan_controller:
+                return web.json_response(self._scan_controller.status())
+            return web.json_response({"enabled": False, "error": "No scan controller"})
+        except Exception as e:
+            return web.json_response({"error": str(e)}, status=500)
+
+    async def toggle_scan(self, request):
+        """POST /api/scan/toggle — toggle scan on/off."""
+        try:
+            if self._scan_controller:
+                enabled = self._scan_controller.toggle()
+                return web.json_response({"enabled": enabled})
+            return web.json_response({"error": "No scan controller"}, status=500)
+        except Exception as e:
+            return web.json_response({"error": str(e)}, status=500)
+
+    async def enable_scan(self, request):
+        """POST /api/scan/enable — enable scanning."""
+        try:
+            if self._scan_controller:
+                self._scan_controller.enable()
+                return web.json_response({"enabled": True})
+            return web.json_response({"error": "No scan controller"}, status=500)
+        except Exception as e:
+            return web.json_response({"error": str(e)}, status=500)
+
+    async def disable_scan(self, request):
+        """POST /api/scan/disable — disable scanning."""
+        try:
+            if self._scan_controller:
+                self._scan_controller.disable()
+                return web.json_response({"enabled": False})
+            return web.json_response({"error": "No scan controller"}, status=500)
+        except Exception as e:
             return web.json_response({"error": str(e)}, status=500)
 
     # ------------------------------------------------------------------
@@ -426,9 +493,9 @@ class APIHandler:
             )
 
 
-def create_app(portfolio):
+def create_app(portfolio, scan_controller=None):
     """Create and configure the aiohttp application."""
-    handler = APIHandler(portfolio)
+    handler = APIHandler(portfolio, scan_controller=scan_controller)
     app = web.Application(middlewares=[cors_middleware])
 
     # Existing routes
@@ -454,15 +521,21 @@ def create_app(portfolio):
     app.router.add_get("/api/executions/{id}", handler.get_execution)
     app.router.add_get("/api/executions/{id}/steps", handler.get_execution_steps)
 
+    # Scan control routes
+    app.router.add_get("/api/scan/status", handler.get_scan_status)
+    app.router.add_post("/api/scan/toggle", handler.toggle_scan)
+    app.router.add_post("/api/scan/enable", handler.enable_scan)
+    app.router.add_post("/api/scan/disable", handler.disable_scan)
+
     # Static files (SPA fallback — must be last)
     app.router.add_get("/{path:.*}", handler.static_files)
     return app
 
 
-def start_api_server(portfolio, port=8080):
+def start_api_server(portfolio, port=8080, scan_controller=None):
     """Start the aiohttp server in a background daemon thread."""
     global _api_runner, _api_site
-    app = create_app(portfolio)
+    app = create_app(portfolio, scan_controller=scan_controller)
     started_event = threading.Event()
     startup_error = []
 

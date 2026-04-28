@@ -1,6 +1,7 @@
 import logging
 import time
 import sys
+import threading
 
 from client import PolymarketClient
 from config import get_settings
@@ -15,6 +16,7 @@ from db.repository import BetRepository
 from trading.mode_gate import TradingModeGate
 from api import start_api_server, stop_api_server
 from agents.runtime.runner import AgentRunner
+from scan_controller import ScanController
 
 
 def setup_logging() -> None:
@@ -35,7 +37,7 @@ def main() -> None:
 
     settings = get_settings()
 
-    # Database health check and schema initialization
+    # Database health check and schema initialized
     logger.info("Connecting to PostgreSQL...")
     if not health_check():
         logger.error("PostgreSQL is not reachable. Check DATABASE_URL and ensure the DB is running.")
@@ -52,6 +54,7 @@ def main() -> None:
     logger.info(f"Bankroll: ${settings.initial_bankroll:.2f}")
     logger.info(f"Kelly fraction: {settings.kelly_frac:.0%}")
     logger.info(f"Scan interval: {settings.scan_interval_secs}s")
+    logger.info(f"Scan enabled: {settings.scan_enabled}")
     logger.info(f"Decision thresholds: HIGH > {settings.high_confidence_threshold:.0%}, LOW < {settings.low_confidence_threshold:.0%}")
 
     client = PolymarketClient()
@@ -67,7 +70,12 @@ def main() -> None:
         kelly_frac=settings.kelly_frac,
         min_edge=settings.min_edge,
     )
-    start_api_server(portfolio=portfolio, port=getattr(settings, "api_port", 8080))
+
+    # Scan controller — DB-backed, toggleable at runtime
+    scan_controller = ScanController(default_enabled=settings.scan_enabled)
+
+    start_api_server(portfolio=portfolio, port=getattr(settings, "api_port", 8080), scan_controller=scan_controller)
+
     resolver = MarketResolver(http_client=client._http)
     decision_gate = DecisionGate()
     ai_agents = create_default_agents()
@@ -99,6 +107,12 @@ def main() -> None:
     try:
         while True:
             cycle += 1
+
+            if not scan_controller.is_enabled():
+                logger.info(f"--- Cycle {cycle} --- [SCAN DISABLED]")
+                time.sleep(settings.scan_interval_secs)
+                continue
+
             logger.info(f"--- Cycle {cycle} ---")
 
             try:

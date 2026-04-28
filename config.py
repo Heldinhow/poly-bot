@@ -48,6 +48,9 @@ class Settings(BaseSettings):
     agent_timeout_secs: int = 1200  # 20 minutes
     agent_max_retries: int = 1
 
+    # Scan
+    scan_enabled: bool = True
+
     class Config:
         env_file = ".env"
         env_file_encoding = "utf-8"

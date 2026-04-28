@@ -164,6 +164,15 @@ PaperPortfolio.stats() ──▶ BetRepository.get_stats() + get_bet_history()
 | `/api/executions/:id` | GET | Get execution detail |
 | `/api/executions/:id/steps` | GET | Get execution steps |
 
+### Scan Control
+
+| Endpoint | Method | Description |
+|----------|--------|-------------|
+| `/api/scan/status` | GET | Current scan enabled/disabled state |
+| `/api/scan/toggle` | POST | Toggle scan on/off |
+| `/api/scan/enable` | POST | Enable scanning |
+| `/api/scan/disable` | POST | Disable scanning |
+
 ## Authentication
 
 - **Polymarket**: Public API, no auth required for read endpoints
