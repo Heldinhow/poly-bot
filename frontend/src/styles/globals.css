@@ -21,6 +21,9 @@
   --color-amber-dim: var(--amber-dim);
   --color-purple: var(--purple);
   --color-purple-dim: var(--purple-dim);
+  --color-accent-cyan: var(--cyan);
+  --color-surface-elevated: var(--bg-elevated);
+  --color-surface-hover: rgba(255, 255, 255, 0.06);
   --color-text-primary: var(--text-primary);
   --color-text-secondary: var(--text-secondary);
   --color-text-muted: var(--text-muted);

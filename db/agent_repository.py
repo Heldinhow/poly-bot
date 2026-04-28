@@ -1,3 +1,4 @@
+import json
 import logging
 from typing import Optional
 from uuid import UUID
@@ -28,12 +29,14 @@ class AgentRepository:
                 INSERT INTO agents (
                     name, description, runtime, model, system_prompt,
                     max_concurrent_tasks, max_retries, custom_args, custom_env
-                ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)
+                ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s::jsonb)
                 RETURNING id
                 """,
                 (
                     name, description, runtime, model, system_prompt,
-                    max_concurrent_tasks, max_retries, custom_args or [], custom_env or {}
+                    max_concurrent_tasks, max_retries,
+                    custom_args or [],
+                    json.dumps(custom_env or {}),
                 ),
             )
             result = cursor.fetchone()
@@ -68,10 +71,13 @@ class AgentRepository:
             "is_active", "is_archived",
         }
         updates = {k: v for k, v in fields.items() if k in allowed and v is not None}
+        # Serialize JSONB fields
+        if "custom_env" in updates:
+            updates["custom_env"] = json.dumps(updates["custom_env"])
         if not updates:
             return False
 
-        set_clause = ", ".join(f"{k} = %s" for k in updates)
+        set_clause = ", ".join(f"{k} = %s" if k != "custom_env" else f"{k} = %s::jsonb" for k in updates)
         values = list(updates.values()) + [str(agent_id)]
 
         with get_db_cursor() as cursor:

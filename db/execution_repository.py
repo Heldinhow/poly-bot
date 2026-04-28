@@ -2,6 +2,7 @@ import logging
 from typing import Optional
 from uuid import UUID
 
+import psycopg2.extras
 from db.connection import get_db_cursor
 
 logger = logging.getLogger(__name__)
@@ -99,7 +100,8 @@ class ExecutionRepository:
                 """,
                 (
                     status, probability, confidence, reasoning,
-                    sources, raw_output, error_message, failure_reason,
+                    psycopg2.extras.Json(sources) if sources is not None else None,
+                    raw_output, error_message, failure_reason,
                     input_tokens, output_tokens, str(log_id),
                 ),
             )
@@ -175,7 +177,9 @@ class ExecutionRepository:
                 """,
                 (
                     str(execution_log_id), seq, step_type, content,
-                    tool_name, tool_input, tool_output, tool_call_id, duration_ms,
+                    tool_name,
+                    psycopg2.extras.Json(tool_input) if tool_input is not None else None,
+                    tool_output, tool_call_id, duration_ms,
                 ),
             )
             result = cursor.fetchone()

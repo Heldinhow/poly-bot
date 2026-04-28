@@ -74,6 +74,10 @@
 - **`api_port`** setting in `config.py` (default 8080)
 - **`aiohttp>=3.11.0`** dependency in `requirements.txt`
 
+### Fixed
+- **Dashboard — Missing Tailwind theme tokens** — `accent-cyan`, `surface-elevated`, `surface-hover` were used in components but not defined in `@theme` block of `globals.css`, making buttons (New Agent, Create, Save) and card backgrounds invisible
+- **Agent/Execution CRUD — JSONB serialization** — psycopg2 cannot adapt Python `dict`/`list` to PostgreSQL `JSONB` natively; wrapped `custom_env`, `sources`, and `tool_input` with `psycopg2.extras.Json()` in `agent_repository.py` and `execution_repository.py`
+
 ### Changed
 - **Scan control** — DB-backed enable/disable with dashboard toggle and API endpoints
   - `scan_settings` table (single-row config) persists state across restarts
