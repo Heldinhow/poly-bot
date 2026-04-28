@@ -74,9 +74,10 @@ async def cors_middleware(request, handler):
 class APIHandler:
     """HTTP request handlers for the dashboard API."""
 
-    def __init__(self, portfolio, scan_controller=None):
+    def __init__(self, portfolio, scan_controller=None, event_bus=None):
         self.portfolio = portfolio
         self._scan_controller = scan_controller
+        self._event_bus = event_bus
         self._lock = threading.Lock()
         self._executor = ThreadPoolExecutor(max_workers=2)
         self._agent_repo = AgentRepository()
@@ -415,6 +416,32 @@ class APIHandler:
             logger.exception("Error in GET /api/executions/:id/steps")
             return web.json_response({"error": str(e)}, status=500)
 
+    async def executions_live_ws(self, request):
+        """GET /api/executions/live — WebSocket endpoint for live execution updates."""
+        ws = web.WebSocketResponse()
+        await ws.prepare(request)
+        await ws.send_json({
+            "type": "connected",
+            "timestamp": datetime.utcnow().isoformat() + "Z",
+        })
+
+        subscription = None
+
+        def send_event(data):
+            asyncio.create_task(ws.send_json(_serialize_json(data)))
+
+        if self._event_bus:
+            subscription = self._event_bus.subscribe(send_event)
+
+        try:
+            async for msg in ws:
+                if msg.type == web.WSMsgType.CLOSE:
+                    break
+        finally:
+            if subscription is not None:
+                self._event_bus.unsubscribe(subscription)
+            await ws.close()
+
     # ------------------------------------------------------------------
     # Audit Trail
     # ------------------------------------------------------------------
@@ -571,9 +598,9 @@ class APIHandler:
             )
 
 
-def create_app(portfolio, scan_controller=None):
+def create_app(portfolio, scan_controller=None, event_bus=None):
     """Create and configure the aiohttp application."""
-    handler = APIHandler(portfolio, scan_controller=scan_controller)
+    handler = APIHandler(portfolio, scan_controller=scan_controller, event_bus=event_bus)
     app = web.Application(middlewares=[cors_middleware])
 
     # Existing routes
@@ -598,6 +625,7 @@ def create_app(portfolio, scan_controller=None):
     app.router.add_get("/api/executions", handler.list_executions)
     app.router.add_get("/api/executions/{id}", handler.get_execution)
     app.router.add_get("/api/executions/{id}/steps", handler.get_execution_steps)
+    app.router.add_get("/api/executions/live", handler.executions_live_ws)
 
     # Audit trail routes
     app.router.add_get("/api/audit/market/{market_id}", handler.get_market_audit)
@@ -615,10 +643,10 @@ def create_app(portfolio, scan_controller=None):
     return app
 
 
-def start_api_server(portfolio, port=8080, scan_controller=None):
+def start_api_server(portfolio, port=8080, scan_controller=None, event_bus=None):
     """Start the aiohttp server in a background daemon thread."""
     global _api_runner, _api_site
-    app = create_app(portfolio, scan_controller=scan_controller)
+    app = create_app(portfolio, scan_controller=scan_controller, event_bus=event_bus)
     started_event = threading.Event()
     startup_error = []
 

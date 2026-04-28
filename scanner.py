@@ -11,6 +11,11 @@ from reporter import MarketResolver
 from db.cache_repository import CacheRepository
 from db.decision_factor_repository import DecisionFactorRepository
 from db.execution_summary_repository import ExecutionSummaryRepository
+from realtime.events import (
+    ExecutionEvent, SCAN_STARTED, MARKET_FILTERED, MARKET_ANALYZING,
+    MARKET_ANALYZED, MARKET_DECIDED, BET_RECORDED, PORTFOLIO_RESOLVED,
+    SCAN_COMPLETED
+)
 
 logger = logging.getLogger(__name__)
 
@@ -36,13 +41,17 @@ class Scanner:
         self._cache = CacheRepository()
         self._factor_repo = DecisionFactorRepository()
         self._summary_repo = ExecutionSummaryRepository()
-        
+        self._event_bus = None
+
         settings = get_settings()
         self._vol_pred, self._value_pred, self._live_pred = build_filter_predicates(
             settings.min_volume, settings.max_price, settings.max_odds, settings.min_odds
         )
         mode = "AGENT RUNTIME" if agent_runner else "LEGACY"
         logger.info(f"Scanner initialized [{mode} MODE]" + (" [PAPER]" if portfolio else ""))
+
+    def set_event_bus(self, bus):
+        self._event_bus = bus
 
     def _should_analyze(self, market, underdog_price: float, odds: float) -> bool:
         """Check if market should be analyzed using cache + static heuristics.
@@ -110,9 +119,16 @@ class Scanner:
 
     def scan(self, resolve_only: bool = False) -> int:
         sent = 0
+        analyzable = []
 
         if not resolve_only:
             logger.info("Starting scan...")
+            if self._event_bus:
+                self._event_bus.publish(ExecutionEvent(
+                    type=SCAN_STARTED,
+                    message="Scan started",
+                    data={"mode": "AGENT RUNTIME" if self._agent_runner else "LEGACY"}
+                ))
             markets = self._client.fetch_active_markets(limit=200)
             if not markets:
                 logger.warning("No markets fetched")
@@ -126,6 +142,15 @@ class Scanner:
 
             value_bets = self._client.filter_markets(live_filtered, self._value_pred)
             logger.info(f"Found {len(value_bets)} value bet opportunities")
+            if self._event_bus:
+                self._event_bus.publish(ExecutionEvent(
+                    type=MARKET_FILTERED,
+                    message=f"Filters: {len(volume_filtered)}/{len(markets)} passed vol, "
+                            f"{len(live_filtered)}/{len(volume_filtered)} live, "
+                            f"{len(value_bets)}/{len(live_filtered)} value bets",
+                    data={"stage": "filters", "volume_filtered": len(volume_filtered),
+                          "live_filtered": len(live_filtered), "value_bets": len(value_bets)}
+                ))
 
             # Pre-filter: only analyze markets that pass cache + static checks
             analyzable = []
@@ -155,6 +180,14 @@ class Scanner:
                     )
                     odds = 1.0 / underdog_price
                     implied_prob = underdog_price
+
+                    if self._event_bus:
+                        self._event_bus.publish(ExecutionEvent(
+                            type=MARKET_ANALYZING,
+                            market_id=market.id,
+                            question=market.question,
+                            message=f"Analyzing: {market.question[:60]}..."
+                        ))
 
                     # AI Analysis Layer — Agent Runtime first, fallback to legacy agents
                     ai_probability = None
@@ -205,6 +238,17 @@ class Scanner:
                         except Exception as e:
                             logger.error(f"[Legacy] FAILED {market.question[:50]}: {e}")
 
+                    if self._event_bus and ai_probability is not None:
+                        self._event_bus.publish(ExecutionEvent(
+                            type=MARKET_ANALYZED,
+                            market_id=market.id,
+                            question=market.question,
+                            message=f"AI prob={ai_probability:.0%} | implied={implied_prob:.0%} | "
+                                    f"odds={odds:.1f}x | edge={edge:+.1%}",
+                            data={"ai_prob": ai_probability, "implied_prob": implied_prob,
+                                  "odds": odds, "edge": edge, "agent": agent_name}
+                        ))
+
                     # Decision Gate
                     decision = "SKIP"
                     reject_reason = None
@@ -217,6 +261,14 @@ class Scanner:
                             f"Decision for {market.question[:50]}: {decision} "
                             f"(edge={edge:+.1%}, ai={ai_probability:.1%}, market={implied_prob:.1%})"
                         )
+                        if self._event_bus and decision != "SKIP":
+                            self._event_bus.publish(ExecutionEvent(
+                                type=MARKET_DECIDED,
+                                market_id=market.id,
+                                question=market.question,
+                                message=f"Decision: {decision} ({reject_reason or 'edge='+str(round(edge,3))})",
+                                data={"decision": decision, "edge": edge, "reject_reason": reject_reason}
+                            ))
                         if decision == "REJECT":
                             if edge < get_settings().min_edge:
                                 reject_reason = "no_edge"
@@ -248,6 +300,14 @@ class Scanner:
                             probability_ai=ai_probability,
                             analysis_summary=ai_analysis,
                         )
+                        if self._event_bus and bet:
+                            self._event_bus.publish(ExecutionEvent(
+                                type=BET_RECORDED,
+                                market_id=market.id,
+                                question=market.question,
+                                message=f"Bet recorded: stake=${bet.stake:.2f} @ {odds:.1f}x odds",
+                                data={"stake": bet.stake, "odds": odds, "kelly_frac": bet.kelly_frac}
+                            ))
 
                     # Persist decision factors and execution summary
                     try:
@@ -334,8 +394,23 @@ class Scanner:
                 f"ROI={stats['roi_pct']:.1f}% "
                 f"({stats['wins']}W/{stats['losses']}L)"
             )
+            if self._event_bus and stats:
+                self._event_bus.publish(ExecutionEvent(
+                    type=PORTFOLIO_RESOLVED,
+                    message=f"Portfolio: bankroll=${stats['bankroll']:.2f} | "
+                            f"ROI={stats['roi_pct']:.1f}% | {stats['wins']}W/{stats['losses']}L",
+                    data={"bankroll": stats['bankroll'], "roi_pct": stats['roi_pct'],
+                          "wins": stats['wins'], "losses": stats['losses'],
+                          "resolved": resolved}
+                ))
             if resolved:
                 self._sender.send_portfolio_update(stats)
 
+        if self._event_bus:
+            self._event_bus.publish(ExecutionEvent(
+                type=SCAN_COMPLETED,
+                message=f"Scan complete — analyzed: {len(analyzable)}, bets: {sent}",
+                data={"markets_analyzed": len(analyzable), "bets_placed": sent}
+            ))
         logger.info(f"Scan complete. Alerts sent: {sent}")
         return sent

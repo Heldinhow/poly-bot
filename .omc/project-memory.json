@@ -205,6 +205,301 @@
       "keyFiles": []
     }
   },
-  "hotPaths": [],
+  "hotPaths": [
+    {
+      "path": "scanner.py",
+      "accessCount": 52,
+      "lastAccessed": 1777408890228,
+      "type": "file"
+    },
+    {
+      "path": "",
+      "accessCount": 43,
+      "lastAccessed": 1777408471233,
+      "type": "directory"
+    },
+    {
+      "path": "api.py",
+      "accessCount": 41,
+      "lastAccessed": 1777408699434,
+      "type": "file"
+    },
+    {
+      "path": "main.py",
+      "accessCount": 11,
+      "lastAccessed": 1777408809979,
+      "type": "file"
+    },
+    {
+      "path": "db/schema.sql",
+      "accessCount": 7,
+      "lastAccessed": 1777402773061,
+      "type": "file"
+    },
+    {
+      "path": "realtime/events.py",
+      "accessCount": 7,
+      "lastAccessed": 1777408917573,
+      "type": "file"
+    },
+    {
+      "path": "agents/tracker.py",
+      "accessCount": 6,
+      "lastAccessed": 1777402773288,
+      "type": "file"
+    },
+    {
+      "path": "frontend/src/App.tsx",
+      "accessCount": 6,
+      "lastAccessed": 1777403599763,
+      "type": "file"
+    },
+    {
+      "path": "frontend/src/lib/api.ts",
+      "accessCount": 6,
+      "lastAccessed": 1777403651068,
+      "type": "file"
+    },
+    {
+      "path": "portfolio.py",
+      "accessCount": 6,
+      "lastAccessed": 1777408064705,
+      "type": "file"
+    },
+    {
+      "path": "frontend/src",
+      "accessCount": 6,
+      "lastAccessed": 1777408401334,
+      "type": "directory"
+    },
+    {
+      "path": "frontend/src/pages/AuditPage.tsx",
+      "accessCount": 6,
+      "lastAccessed": 1777409895375,
+      "type": "file"
+    },
+    {
+      "path": "frontend/src/components/KpiRow.tsx",
+      "accessCount": 5,
+      "lastAccessed": 1777403518849,
+      "type": "file"
+    },
+    {
+      "path": "db/repository.py",
+      "accessCount": 5,
+      "lastAccessed": 1777410000134,
+      "type": "file"
+    },
+    {
+      "path": "agents/runtime/claude_backend.py",
+      "accessCount": 4,
+      "lastAccessed": 1777400715342,
+      "type": "file"
+    },
+    {
+      "path": "agents/runtime/models.py",
+      "accessCount": 4,
+      "lastAccessed": 1777402780308,
+      "type": "file"
+    },
+    {
+      "path": "frontend/src/components/PerformanceChart.tsx",
+      "accessCount": 4,
+      "lastAccessed": 1777402900697,
+      "type": "file"
+    },
+    {
+      "path": "db/execution_repository.py",
+      "accessCount": 4,
+      "lastAccessed": 1777408069441,
+      "type": "file"
+    },
+    {
+      "path": "config.py",
+      "accessCount": 3,
+      "lastAccessed": 1777400541742,
+      "type": "file"
+    },
+    {
+      "path": "reporter.py",
+      "accessCount": 3,
+      "lastAccessed": 1777400620062,
+      "type": "file"
+    },
+    {
+      "path": "db/decision_factor_repository.py",
+      "accessCount": 3,
+      "lastAccessed": 1777402773494,
+      "type": "file"
+    },
+    {
+      "path": "frontend/src/hooks/useDashboard.ts",
+      "accessCount": 3,
+      "lastAccessed": 1777402960787,
+      "type": "file"
+    },
+    {
+      "path": "frontend/src/hooks/useExecutions.ts",
+      "accessCount": 3,
+      "lastAccessed": 1777403513764,
+      "type": "file"
+    },
+    {
+      "path": "frontend/src/pages/ExecutionsPage.tsx",
+      "accessCount": 3,
+      "lastAccessed": 1777403518836,
+      "type": "file"
+    },
+    {
+      "path": "decision.py",
+      "accessCount": 3,
+      "lastAccessed": 1777408065074,
+      "type": "file"
+    },
+    {
+      "path": "filters.py",
+      "accessCount": 3,
+      "lastAccessed": 1777408069384,
+      "type": "file"
+    },
+    {
+      "path": "agents/sports_analyst.py",
+      "accessCount": 2,
+      "lastAccessed": 1777398992489,
+      "type": "file"
+    },
+    {
+      "path": "models/bet.py",
+      "accessCount": 2,
+      "lastAccessed": 1777400553708,
+      "type": "file"
+    },
+    {
+      "path": "db/connection.py",
+      "accessCount": 2,
+      "lastAccessed": 1777400560717,
+      "type": "file"
+    },
+    {
+      "path": "db/execution_summary_repository.py",
+      "accessCount": 2,
+      "lastAccessed": 1777402772622,
+      "type": "file"
+    },
+    {
+      "path": "agents/truth_extractor.py",
+      "accessCount": 2,
+      "lastAccessed": 1777402773112,
+      "type": "file"
+    },
+    {
+      "path": "db/truth_claim_repository.py",
+      "accessCount": 2,
+      "lastAccessed": 1777402773164,
+      "type": "file"
+    },
+    {
+      "path": "frontend/src/components/OpenBetsTable.tsx",
+      "accessCount": 2,
+      "lastAccessed": 1777402900775,
+      "type": "file"
+    },
+    {
+      "path": "frontend/src/components/AuditFilterBar.tsx",
+      "accessCount": 2,
+      "lastAccessed": 1777404257074,
+      "type": "file"
+    },
+    {
+      "path": "scan_controller.py",
+      "accessCount": 2,
+      "lastAccessed": 1777408059840,
+      "type": "file"
+    },
+    {
+      "path": "client.py",
+      "accessCount": 2,
+      "lastAccessed": 1777408064958,
+      "type": "file"
+    },
+    {
+      "path": "agents/runtime/runner.py",
+      "accessCount": 2,
+      "lastAccessed": 1777408069402,
+      "type": "file"
+    },
+    {
+      "path": "frontend/src/hooks/useExecutionFeed.ts",
+      "accessCount": 2,
+      "lastAccessed": 1777408727571,
+      "type": "file"
+    },
+    {
+      "path": "frontend/src/components/ExecutionFeed.tsx",
+      "accessCount": 2,
+      "lastAccessed": 1777408727750,
+      "type": "file"
+    },
+    {
+      "path": "dashboard.py",
+      "accessCount": 1,
+      "lastAccessed": 1777397752913,
+      "type": "file"
+    },
+    {
+      "path": "frontend/src/components/ResolvedBetsTable.tsx",
+      "accessCount": 1,
+      "lastAccessed": 1777397753722,
+      "type": "file"
+    },
+    {
+      "path": "dashboard/index.html",
+      "accessCount": 1,
+      "lastAccessed": 1777397762634,
+      "type": "file"
+    },
+    {
+      "path": "agents/classifier.py",
+      "accessCount": 1,
+      "lastAccessed": 1777398808069,
+      "type": "file"
+    },
+    {
+      "path": "agents/odds_analyst.py",
+      "accessCount": 1,
+      "lastAccessed": 1777398991883,
+      "type": "file"
+    },
+    {
+      "path": "db/scan_repository.py",
+      "accessCount": 1,
+      "lastAccessed": 1777400542054,
+      "type": "file"
+    },
+    {
+      "path": "frontend/src/hooks",
+      "accessCount": 1,
+      "lastAccessed": 1777402900799,
+      "type": "directory"
+    },
+    {
+      "path": "frontend/src/components/TruthClaimsAccordion.tsx",
+      "accessCount": 1,
+      "lastAccessed": 1777404179163,
+      "type": "file"
+    },
+    {
+      "path": "frontend/src/components/MarketCard.tsx",
+      "accessCount": 1,
+      "lastAccessed": 1777404238972,
+      "type": "file"
+    },
+    {
+      "path": "alerts.py",
+      "accessCount": 1,
+      "lastAccessed": 1777408069417,
+      "type": "file"
+    }
+  ],
   "userDirectives": []
 }

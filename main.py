@@ -15,6 +15,7 @@ from db.connection import init_schema, health_check
 from db.repository import BetRepository
 from trading.mode_gate import TradingModeGate
 from api import start_api_server, stop_api_server
+from realtime.events import ExecutionEventBus
 from agents.runtime.runner import AgentRunner
 from scan_controller import ScanController
 
@@ -74,8 +75,6 @@ def main() -> None:
     # Scan controller — DB-backed, toggleable at runtime
     scan_controller = ScanController(default_enabled=settings.scan_enabled)
 
-    start_api_server(portfolio=portfolio, port=getattr(settings, "api_port", 8080), scan_controller=scan_controller)
-
     resolver = MarketResolver(http_client=client._http)
     decision_gate = DecisionGate()
     ai_agents = create_default_agents()
@@ -91,6 +90,8 @@ def main() -> None:
         logger.info("AI agents: 3 legacy (Sports, Esports, Odds)")
         agent_runner = None
 
+    event_bus = ExecutionEventBus()
+
     scanner = Scanner(
         client=client,
         alert_sender=alert_sender,
@@ -100,6 +101,9 @@ def main() -> None:
         decision_gate=decision_gate,
         agent_runner=agent_runner,
     )
+    scanner.set_event_bus(event_bus)
+
+    start_api_server(portfolio=portfolio, port=getattr(settings, "api_port", 8080), scan_controller=scan_controller, event_bus=event_bus)
 
     logger.info("Starting main loop...")
     cycle = 0
