@@ -80,7 +80,7 @@ def main() -> None:
     ai_agents = create_default_agents()
 
     # Agent Runtime setup
-    agent_runner = AgentRunner()
+    agent_runner = AgentRunner(event_bus=event_bus)
     installed_runtimes = agent_runner._runtime.detect_installed_runtimes()
     if installed_runtimes:
         logger.info(f"Agent Runtime: {len(installed_runtimes)} runtime(s) detected — {', '.join(installed_runtimes)}")
