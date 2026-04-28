@@ -5,7 +5,7 @@ from typing import Optional, Set
 from telegram import Bot
 
 from client import Market
-from portfolio import PaperBet
+from models.bet import Bet
 
 logger = logging.getLogger(__name__)
 
@@ -77,7 +77,7 @@ class AlertSender:
     def send_paper_bet(
         self,
         market: Market,
-        bet: PaperBet,
+        bet: Bet,
         bankroll: float,
         probability_ai: Optional[float] = None,
         analysis_summary: str = "",

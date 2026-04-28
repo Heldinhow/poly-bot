@@ -20,10 +20,14 @@ class Settings(BaseSettings):
     max_odds: float = 20.0
 
     # Trading
-    paper_mode: bool = True
+    paper_mode: bool = True  # Deprecated: use trading_mode
+    trading_mode: str = "paper"
     initial_bankroll: float = 50.0
     kelly_frac: float = 0.25
     min_edge: float = 0.05
+
+    # Database
+    database_url: str
 
     # MiniMax API
     minimax_api_key: str
@@ -49,6 +53,19 @@ class Settings(BaseSettings):
             missing.append("TELEGRAM_CHAT_ID")
         if not self.minimax_api_key:
             missing.append("MINIMAX_API_KEY")
+        if not self.database_url:
+            missing.append("DATABASE_URL")
+
+        # Normalize trading_mode
+        mode = self.trading_mode.lower().strip()
+        if mode not in ("paper", "live"):
+            import logging
+            logging.getLogger(__name__).warning(
+                f"Invalid TRADING_MODE '{self.trading_mode}', defaulting to 'paper'"
+            )
+            self.trading_mode = "paper"
+        else:
+            self.trading_mode = mode
 
         if missing:
             raise ValueError(f"Missing required env vars: {', '.join(missing)}")
