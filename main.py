@@ -13,6 +13,7 @@ from agents import create_default_agents
 from db.connection import init_schema, health_check
 from db.repository import BetRepository
 from trading.mode_gate import TradingModeGate
+from api import start_api_server, stop_api_server
 
 
 def setup_logging() -> None:
@@ -66,6 +67,7 @@ def main() -> None:
         kelly_frac=settings.kelly_frac,
         min_edge=settings.min_edge,
     )
+    start_api_server(portfolio=portfolio, port=getattr(settings, "api_port", 8080))
     resolver = MarketResolver(http_client=client._http)
     decision_gate = DecisionGate()
     ai_agents = create_default_agents()
@@ -98,6 +100,7 @@ def main() -> None:
     except KeyboardInterrupt:
         logger.info("Shutdown requested by user")
     finally:
+        stop_api_server()
         client.close()
         logger.info("Client closed. Goodbye!")
 

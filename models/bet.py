@@ -27,6 +27,28 @@ class Bet:
     result: Optional[str] = None
     resolved_at: Optional[str] = None
     trading_mode: str = "paper"
+    id: Optional[int] = None
+
+    def to_dict(self) -> dict:
+        """Serialize for API JSON responses."""
+        return {
+            "id": self.id,
+            "market_id": self.market_id,
+            "question": self.question,
+            "outcome": self.outcome,
+            "price": self.price,
+            "stake": self.stake,
+            "payout": self.payout,
+            "kelly_frac": self.kelly_frac,
+            "edge": self.edge,
+            "probability_ai": self.probability_ai,
+            "analysis_summary": self.analysis_summary,
+            "timestamp": self.timestamp,
+            "resolved": self.resolved,
+            "result": self.result,
+            "resolved_at": self.resolved_at,
+            "trading_mode": self.trading_mode,
+        }
 
     def to_row(self) -> dict:
         return {
@@ -86,6 +108,7 @@ class Bet:
             result=row.get("result"),
             resolved_at=row["resolved_at"].isoformat() if isinstance(row.get("resolved_at"), datetime) else row.get("resolved_at"),
             trading_mode=row["trading_mode"],
+            id=row.get("id"),
         )
 
     @classmethod

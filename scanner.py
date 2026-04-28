@@ -4,7 +4,6 @@ import asyncio
 from alerts import AlertSender
 from client import PolymarketClient
 from config import get_settings
-from dashboard import write_dashboard
 from decision import DecisionGate
 from filters import build_filter_predicates
 from portfolio import PaperPortfolio
@@ -170,7 +169,6 @@ class Scanner:
         # Check resolutions for paper portfolio
         if self._portfolio and self._resolver:
             resolved = self._resolver.resolve_portfolio(self._portfolio)
-            write_dashboard(self._portfolio.to_dict())
             stats = self._portfolio.stats()
             logger.info(
                 f"Portfolio: bankroll=${stats['bankroll']:.2f} "

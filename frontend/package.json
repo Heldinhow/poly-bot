@@ -1,0 +1,29 @@
+{
+  "name": "atlas-dashboard",
+  "private": true,
+  "version": "0.0.1",
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "tsc && vite build",
+    "preview": "vite preview"
+  },
+  "dependencies": {
+    "react": "^19.0",
+    "react-dom": "^19.0",
+    "@tanstack/react-query": "^5.62",
+    "recharts": "^2.15",
+    "lucide-react": "^0.468",
+    "clsx": "^2.1",
+    "tailwind-merge": "^2.6"
+  },
+  "devDependencies": {
+    "vite": "^6.0",
+    "@vitejs/plugin-react": "^4.3",
+    "tailwindcss": "^4.0",
+    "@tailwindcss/vite": "^4.0",
+    "typescript": "^5.7",
+    "@types/react": "^19.0",
+    "@types/react-dom": "^19.0"
+  }
+}

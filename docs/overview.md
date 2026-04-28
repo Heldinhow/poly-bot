@@ -13,7 +13,7 @@ Autonomous underdog value-betting bot for Polymarket prediction markets. Uses mu
 - **Live Trading Ready**: Infrastructure supports switching to live via environment variable
 - **PostgreSQL Persistence**: All bets stored with ACID guarantees
 - **Telegram Alerts**: Real-time notifications for new bets and portfolio updates
-- **Static Dashboard**: HTML dashboard generated from portfolio state
+- **ATLAS Dashboard v2**: React 19 + TypeScript SPA with dark mode, real-time data polling (5s), Recharts performance chart, and responsive design — zero mock data
 
 ## Target Users
 
@@ -30,10 +30,15 @@ Autonomous underdog value-betting bot for Polymarket prediction markets. Uses mu
                                                       │
                            ┌──────────────────────────┘
                            ▼
-                    ┌──────────────┐
-                    │  Bet Record  │
-                    │ (PostgreSQL) │
-                    └──────────────┘
+                    ┌──────────────┐      ┌──────────────┐
+                    │  Bet Record  │◀────▶│   API Server │
+                    │ (PostgreSQL) │      │   (aiohttp)  │
+                    └──────────────┘      └──────┬───────┘
+                                                  │
+                                           ┌──────▼───────┐
+                                           │ ATLAS Dashboard│
+                                           │ (React SPA)   │
+                                           └───────────────┘
 ```
 
 1. **Scan**: Fetch active markets from Polymarket Gamma API (top 200 by volume)

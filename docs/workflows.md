@@ -58,8 +58,6 @@
 │   │   │   │   │   └── Log result
 │   │   │   │   └── Send portfolio update alert
 │   │   │   │
-│   │   ├── dashboard.write_dashboard() → HTML file
-│   │   │
 │   │   └── Log portfolio stats
 │   │
 │   └── Sleep for SCAN_INTERVAL_SECS (default 300s)
@@ -102,8 +100,8 @@ Trigger: scanner cycle checks open bets
    g. Log resolution
 
 2. If any bets resolved:
-   a. Generate dashboard
-   b. Send portfolio update via Telegram
+   a. Send portfolio update via Telegram
+   b. Dashboard auto-reflects changes via API polling (5s)
 ```
 
 ## Startup Workflow

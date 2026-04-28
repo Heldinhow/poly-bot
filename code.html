@@ -1,0 +1,1405 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>ATLAS · Polymarket Autonomous Trading</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Bebas+Neue&family=DM+Mono:wght@300;400;500&family=Inter:wght@300;400;500;600&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --bg-deep: #06060c;
+    --bg-primary: #0a0a12;
+    --bg-surface: #10101c;
+    --bg-elevated: #161625;
+    --bg-card: #1a1a2e;
+    --border-subtle: rgba(255,255,255,0.04);
+    --border-medium: rgba(255,255,255,0.08);
+    --cyan: #00e5ff;
+    --cyan-dim: rgba(0,229,255,0.15);
+    --cyan-glow: rgba(0,229,255,0.3);
+    --orange: #ff7043;
+    --orange-dim: rgba(255,112,67,0.15);
+    --green: #00ff88;
+    --green-dim: rgba(0,255,136,0.12);
+    --red: #ff3366;
+    --red-dim: rgba(255,51,102,0.12);
+    --amber: #ffc107;
+    --amber-dim: rgba(255,193,7,0.12);
+    --purple: #b388ff;
+    --purple-dim: rgba(179,136,255,0.12);
+    --text-primary: #e8e8f0;
+    --text-secondary: #8888a0;
+    --text-muted: #55556a;
+    --font-display: 'Bebas Neue', sans-serif;
+    --font-mono: 'DM Mono', monospace;
+    --font-body: 'Inter', sans-serif;
+    --radius: 8px;
+    --radius-lg: 12px;
+  }
+
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+
+  body {
+    background: var(--bg-deep);
+    color: var(--text-primary);
+    font-family: var(--font-body);
+    min-height: 100vh;
+    overflow-x: hidden;
+  }
+
+  /* Noise texture overlay */
+  body::before {
+    content: '';
+    position: fixed;
+    inset: 0;
+    background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 256 256' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)' opacity='0.03'/%3E%3C/svg%3E");
+    pointer-events: none;
+    z-index: 9999;
+  }
+
+  /* Ambient glow */
+  body::after {
+    content: '';
+    position: fixed;
+    top: -200px;
+    left: 50%;
+    transform: translateX(-50%);
+    width: 800px;
+    height: 500px;
+    background: radial-gradient(ellipse, rgba(0,229,255,0.04) 0%, transparent 70%);
+    pointer-events: none;
+  }
+
+  /* Scrollbar */
+  ::-webkit-scrollbar { width: 6px; }
+  ::-webkit-scrollbar-track { background: var(--bg-deep); }
+  ::-webkit-scrollbar-thumb { background: var(--bg-elevated); border-radius: 3px; }
+  ::-webkit-scrollbar-thumb:hover { background: var(--text-muted); }
+
+  /* ── Top Bar ── */
+  .topbar {
+    position: sticky;
+    top: 0;
+    z-index: 100;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 0 32px;
+    height: 56px;
+    background: rgba(10,10,18,0.85);
+    backdrop-filter: blur(20px);
+    border-bottom: 1px solid var(--border-subtle);
+  }
+
+  .topbar-left {
+    display: flex;
+    align-items: center;
+    gap: 16px;
+  }
+
+  .logo {
+    font-family: var(--font-display);
+    font-size: 28px;
+    letter-spacing: 4px;
+    color: var(--cyan);
+    line-height: 1;
+  }
+
+  .logo span {
+    color: var(--text-muted);
+    font-size: 14px;
+    letter-spacing: 2px;
+    font-family: var(--font-mono);
+    font-weight: 300;
+    margin-left: 8px;
+  }
+
+  .topbar-center {
+    display: flex;
+    align-items: center;
+    gap: 24px;
+  }
+
+  .regime-badge {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 6px 14px;
+    border-radius: 20px;
+    font-family: var(--font-mono);
+    font-size: 12px;
+    font-weight: 500;
+    letter-spacing: 1px;
+    text-transform: uppercase;
+  }
+
+  .regime-badge.recovery {
+    background: var(--green-dim);
+    color: var(--green);
+    border: 1px solid rgba(0,255,136,0.2);
+  }
+
+  .regime-dot {
+    width: 6px;
+    height: 6px;
+    border-radius: 50%;
+    background: currentColor;
+    animation: pulse 2s ease-in-out infinite;
+  }
+
+  @keyframes pulse {
+    0%, 100% { opacity: 1; }
+    50% { opacity: 0.3; }
+  }
+
+  .topbar-right {
+    display: flex;
+    align-items: center;
+    gap: 16px;
+  }
+
+  .status-indicator {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    font-family: var(--font-mono);
+    font-size: 11px;
+    color: var(--text-muted);
+    letter-spacing: 0.5px;
+  }
+
+  .status-indicator .dot {
+    width: 7px;
+    height: 7px;
+    border-radius: 50%;
+    background: var(--green);
+    box-shadow: 0 0 8px var(--green);
+  }
+
+  .mode-toggle {
+    padding: 5px 12px;
+    border-radius: 6px;
+    border: 1px solid var(--amber);
+    background: var(--amber-dim);
+    color: var(--amber);
+    font-family: var(--font-mono);
+    font-size: 11px;
+    font-weight: 500;
+    letter-spacing: 1px;
+    cursor: pointer;
+  }
+
+  /* ── Main Layout ── */
+  .main {
+    display: grid;
+    grid-template-columns: 1fr 1fr 340px;
+    grid-template-rows: auto auto 1fr;
+    gap: 16px;
+    padding: 20px 24px;
+    max-width: 1600px;
+    margin: 0 auto;
+  }
+
+  /* ── KPI Row ── */
+  .kpi-row {
+    grid-column: 1 / -1;
+    display: grid;
+    grid-template-columns: repeat(5, 1fr);
+    gap: 12px;
+  }
+
+  .kpi-card {
+    background: var(--bg-surface);
+    border: 1px solid var(--border-subtle);
+    border-radius: var(--radius);
+    padding: 18px 20px;
+    position: relative;
+    overflow: hidden;
+    opacity: 0;
+    animation: fadeUp 0.5s ease forwards;
+  }
+
+  .kpi-card::before {
+    content: '';
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    height: 2px;
+  }
+
+  .kpi-card:nth-child(1) { animation-delay: 0.05s; }
+  .kpi-card:nth-child(1)::before { background: var(--cyan); }
+  .kpi-card:nth-child(2) { animation-delay: 0.1s; }
+  .kpi-card:nth-child(2)::before { background: var(--green); }
+  .kpi-card:nth-child(3) { animation-delay: 0.15s; }
+  .kpi-card:nth-child(3)::before { background: var(--orange); }
+  .kpi-card:nth-child(4) { animation-delay: 0.2s; }
+  .kpi-card:nth-child(4)::before { background: var(--purple); }
+  .kpi-card:nth-child(5) { animation-delay: 0.25s; }
+  .kpi-card:nth-child(5)::before { background: var(--amber); }
+
+  .kpi-label {
+    font-family: var(--font-mono);
+    font-size: 10px;
+    font-weight: 400;
+    letter-spacing: 1.5px;
+    text-transform: uppercase;
+    color: var(--text-muted);
+    margin-bottom: 10px;
+  }
+
+  .kpi-value {
+    font-family: var(--font-display);
+    font-size: 32px;
+    letter-spacing: 2px;
+    line-height: 1;
+    margin-bottom: 6px;
+  }
+
+  .kpi-sub {
+    font-family: var(--font-mono);
+    font-size: 11px;
+    color: var(--text-secondary);
+  }
+
+  .kpi-sub .positive { color: var(--green); }
+  .kpi-sub .negative { color: var(--red); }
+
+  /* ── Chart Panel ── */
+  .chart-panel {
+    grid-column: 1 / 3;
+    background: var(--bg-surface);
+    border: 1px solid var(--border-subtle);
+    border-radius: var(--radius-lg);
+    padding: 24px;
+    opacity: 0;
+    animation: fadeUp 0.5s ease forwards;
+    animation-delay: 0.3s;
+  }
+
+  .panel-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: 20px;
+  }
+
+  .panel-title {
+    font-family: var(--font-display);
+    font-size: 20px;
+    letter-spacing: 3px;
+    color: var(--text-primary);
+  }
+
+  .panel-tabs {
+    display: flex;
+    gap: 4px;
+    background: var(--bg-deep);
+    padding: 3px;
+    border-radius: 6px;
+  }
+
+  .panel-tab {
+    padding: 5px 14px;
+    border-radius: 4px;
+    font-family: var(--font-mono);
+    font-size: 11px;
+    color: var(--text-muted);
+    cursor: pointer;
+    border: none;
+    background: transparent;
+    letter-spacing: 0.5px;
+    transition: all 0.2s ease;
+  }
+
+  .panel-tab.active {
+    background: var(--bg-elevated);
+    color: var(--cyan);
+  }
+
+  .panel-tab:hover:not(.active) {
+    color: var(--text-secondary);
+  }
+
+  .chart-container {
+    position: relative;
+    height: 280px;
+  }
+
+  .chart-container canvas {
+    width: 100% !important;
+    height: 100% !important;
+  }
+
+  /* ── PRISM Panel ── */
+  .prism-panel {
+    background: var(--bg-surface);
+    border: 1px solid var(--border-subtle);
+    border-radius: var(--radius-lg);
+    padding: 24px;
+    opacity: 0;
+    animation: fadeUp 0.5s ease forwards;
+    animation-delay: 0.35s;
+  }
+
+  .prism-regimes {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    margin-top: 16px;
+  }
+
+  .prism-item {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 10px 14px;
+    border-radius: var(--radius);
+    background: var(--bg-deep);
+    border: 1px solid var(--border-subtle);
+    transition: all 0.2s ease;
+  }
+
+  .prism-item.active {
+    border-color: rgba(0,255,136,0.2);
+    background: rgba(0,255,136,0.03);
+  }
+
+  .prism-icon {
+    width: 32px;
+    height: 32px;
+    border-radius: 6px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 14px;
+    flex-shrink: 0;
+  }
+
+  .prism-item:nth-child(1) .prism-icon { background: var(--green-dim); color: var(--green); }
+  .prism-item:nth-child(2) .prism-icon { background: var(--red-dim); color: var(--red); }
+  .prism-item:nth-child(3) .prism-icon { background: var(--orange-dim); color: var(--orange); }
+  .prism-item:nth-child(4) .prism-icon { background: var(--cyan-dim); color: var(--cyan); }
+  .prism-item:nth-child(5) .prism-icon { background: var(--purple-dim); color: var(--purple); }
+
+  .prism-info {
+    flex: 1;
+  }
+
+  .prism-name {
+    font-family: var(--font-mono);
+    font-size: 12px;
+    font-weight: 500;
+    color: var(--text-primary);
+    letter-spacing: 0.5px;
+  }
+
+  .prism-prob {
+    font-family: var(--font-mono);
+    font-size: 11px;
+    color: var(--text-muted);
+    margin-top: 2px;
+  }
+
+  .prism-bar-track {
+    width: 60px;
+    height: 4px;
+    background: var(--bg-elevated);
+    border-radius: 2px;
+    overflow: hidden;
+    flex-shrink: 0;
+  }
+
+  .prism-bar-fill {
+    height: 100%;
+    border-radius: 2px;
+    transition: width 1s ease;
+  }
+
+  .prism-item:nth-child(1) .prism-bar-fill { background: var(--green); width: 62%; }
+  .prism-item:nth-child(2) .prism-bar-fill { background: var(--red); width: 8%; }
+  .prism-item:nth-child(3) .prism-bar-fill { background: var(--orange); width: 12%; }
+  .prism-item:nth-child(4) .prism-bar-fill { background: var(--cyan); width: 14%; }
+  .prism-item:nth-child(5) .prism-bar-fill { background: var(--purple); width: 4%; }
+
+  /* ── Agent Hierarchy ── */
+  .agents-section {
+    grid-column: 1 / -1;
+    opacity: 0;
+    animation: fadeUp 0.5s ease forwards;
+    animation-delay: 0.4s;
+  }
+
+  .agents-grid {
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    gap: 12px;
+    margin-top: 16px;
+  }
+
+  .agent-layer {
+    background: var(--bg-surface);
+    border: 1px solid var(--border-subtle);
+    border-radius: var(--radius-lg);
+    padding: 20px;
+    position: relative;
+  }
+
+  .agent-layer::after {
+    content: '';
+    position: absolute;
+    bottom: 0;
+    left: 20px;
+    right: 20px;
+    height: 1px;
+    background: linear-gradient(90deg, transparent, var(--cyan-dim), transparent);
+  }
+
+  .layer-badge {
+    font-family: var(--font-mono);
+    font-size: 9px;
+    letter-spacing: 2px;
+    text-transform: uppercase;
+    color: var(--text-muted);
+    margin-bottom: 4px;
+  }
+
+  .layer-title {
+    font-family: var(--font-display);
+    font-size: 18px;
+    letter-spacing: 3px;
+    color: var(--cyan);
+    margin-bottom: 16px;
+  }
+
+  .agent-item {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 8px 0;
+    border-bottom: 1px solid var(--border-subtle);
+  }
+
+  .agent-item:last-child { border-bottom: none; }
+
+  .agent-name {
+    font-family: var(--font-mono);
+    font-size: 12px;
+    color: var(--text-secondary);
+    font-weight: 400;
+  }
+
+  .agent-accuracy {
+    font-family: var(--font-mono);
+    font-size: 11px;
+    font-weight: 500;
+    padding: 2px 8px;
+    border-radius: 4px;
+  }
+
+  .agent-accuracy.high {
+    color: var(--green);
+    background: var(--green-dim);
+  }
+
+  .agent-accuracy.mid {
+    color: var(--amber);
+    background: var(--amber-dim);
+  }
+
+  .agent-accuracy.low {
+    color: var(--red);
+    background: var(--red-dim);
+  }
+
+  /* ── Active Positions ── */
+  .positions-panel {
+    grid-column: 1 / 3;
+    background: var(--bg-surface);
+    border: 1px solid var(--border-subtle);
+    border-radius: var(--radius-lg);
+    padding: 24px;
+    opacity: 0;
+    animation: fadeUp 0.5s ease forwards;
+    animation-delay: 0.45s;
+  }
+
+  .positions-table {
+    width: 100%;
+    margin-top: 16px;
+    border-collapse: collapse;
+  }
+
+  .positions-table thead th {
+    font-family: var(--font-mono);
+    font-size: 10px;
+    letter-spacing: 1.5px;
+    text-transform: uppercase;
+    color: var(--text-muted);
+    text-align: left;
+    padding: 0 12px 12px 12px;
+    border-bottom: 1px solid var(--border-medium);
+    font-weight: 400;
+  }
+
+  .positions-table tbody td {
+    font-family: var(--font-mono);
+    font-size: 12px;
+    color: var(--text-secondary);
+    padding: 14px 12px;
+    border-bottom: 1px solid var(--border-subtle);
+    vertical-align: middle;
+  }
+
+  .positions-table tbody tr {
+    transition: background 0.15s ease;
+  }
+
+  .positions-table tbody tr:hover {
+    background: rgba(255,255,255,0.015);
+  }
+
+  .market-cell {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+  }
+
+  .market-icon {
+    width: 28px;
+    height: 28px;
+    border-radius: 6px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 12px;
+    flex-shrink: 0;
+  }
+
+  .market-icon.esport { background: var(--purple-dim); color: var(--purple); }
+  .market-icon.sport { background: var(--cyan-dim); color: var(--cyan); }
+
+  .market-name {
+    color: var(--text-primary);
+    font-weight: 500;
+    font-size: 12px;
+  }
+
+  .market-sub {
+    font-size: 10px;
+    color: var(--text-muted);
+    margin-top: 1px;
+  }
+
+  .side-badge {
+    padding: 3px 10px;
+    border-radius: 4px;
+    font-size: 10px;
+    font-weight: 500;
+    letter-spacing: 1px;
+    text-transform: uppercase;
+  }
+
+  .side-badge.yes {
+    background: var(--green-dim);
+    color: var(--green);
+  }
+
+  .side-badge.no {
+    background: var(--red-dim);
+    color: var(--red);
+  }
+
+  .pnl-positive { color: var(--green); }
+  .pnl-negative { color: var(--red); }
+
+  /* ── Feed Panel ── */
+  .feed-panel {
+    background: var(--bg-surface);
+    border: 1px solid var(--border-subtle);
+    border-radius: var(--radius-lg);
+    padding: 24px;
+    opacity: 0;
+    animation: fadeUp 0.5s ease forwards;
+    animation-delay: 0.5s;
+    max-height: 520px;
+    overflow-y: auto;
+  }
+
+  .feed-list {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+    margin-top: 16px;
+  }
+
+  .feed-item {
+    display: flex;
+    gap: 12px;
+    padding: 12px 10px;
+    border-radius: var(--radius);
+    transition: background 0.15s ease;
+    cursor: default;
+  }
+
+  .feed-item:hover {
+    background: rgba(255,255,255,0.015);
+  }
+
+  .feed-time {
+    font-family: var(--font-mono);
+    font-size: 10px;
+    color: var(--text-muted);
+    white-space: nowrap;
+    padding-top: 2px;
+    min-width: 44px;
+  }
+
+  .feed-body {
+    flex: 1;
+  }
+
+  .feed-action {
+    font-family: var(--font-mono);
+    font-size: 11px;
+    color: var(--text-secondary);
+    line-height: 1.5;
+  }
+
+  .feed-action strong {
+    color: var(--text-primary);
+    font-weight: 500;
+  }
+
+  .feed-action .cyan { color: var(--cyan); }
+  .feed-action .green { color: var(--green); }
+  .feed-action .red { color: var(--red); }
+  .feed-action .orange { color: var(--orange); }
+  .feed-action .purple { color: var(--purple); }
+
+  .feed-agent {
+    font-family: var(--font-mono);
+    font-size: 9px;
+    color: var(--text-muted);
+    margin-top: 3px;
+    letter-spacing: 0.5px;
+  }
+
+  /* ── JANUS Section ── */
+  .janus-section {
+    grid-column: 1 / -1;
+    opacity: 0;
+    animation: fadeUp 0.5s ease forwards;
+    animation-delay: 0.55s;
+  }
+
+  .janus-grid {
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    gap: 12px;
+    margin-top: 16px;
+  }
+
+  .janus-card {
+    background: var(--bg-surface);
+    border: 1px solid var(--border-subtle);
+    border-radius: var(--radius);
+    padding: 20px;
+    text-align: center;
+    transition: all 0.2s ease;
+  }
+
+  .janus-card:hover {
+    border-color: var(--border-medium);
+    transform: translateY(-2px);
+  }
+
+  .janus-avatar {
+    width: 48px;
+    height: 48px;
+    border-radius: 50%;
+    margin: 0 auto 12px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-family: var(--font-display);
+    font-size: 20px;
+    letter-spacing: 1px;
+  }
+
+  .janus-card:nth-child(1) .janus-avatar { background: var(--cyan-dim); color: var(--cyan); border: 1px solid rgba(0,229,255,0.2); }
+  .janus-card:nth-child(2) .janus-avatar { background: var(--orange-dim); color: var(--orange); border: 1px solid rgba(255,112,67,0.2); }
+  .janus-card:nth-child(3) .janus-avatar { background: var(--green-dim); color: var(--green); border: 1px solid rgba(0,255,136,0.2); }
+  .janus-card:nth-child(4) .janus-avatar { background: var(--purple-dim); color: var(--purple); border: 1px solid rgba(179,136,255,0.2); }
+
+  .janus-name {
+    font-family: var(--font-display);
+    font-size: 16px;
+    letter-spacing: 2px;
+    color: var(--text-primary);
+    margin-bottom: 2px;
+  }
+
+  .janus-role {
+    font-family: var(--font-mono);
+    font-size: 10px;
+    color: var(--text-muted);
+    letter-spacing: 1px;
+    text-transform: uppercase;
+    margin-bottom: 14px;
+  }
+
+  .janus-stat {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 6px 0;
+    border-top: 1px solid var(--border-subtle);
+  }
+
+  .janus-stat-label {
+    font-family: var(--font-mono);
+    font-size: 10px;
+    color: var(--text-muted);
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+  }
+
+  .janus-stat-value {
+    font-family: var(--font-mono);
+    font-size: 12px;
+    font-weight: 500;
+  }
+
+  /* ── Animations ── */
+  @keyframes fadeUp {
+    from { opacity: 0; transform: translateY(16px); }
+    to { opacity: 1; transform: translateY(0); }
+  }
+
+  @keyframes scanline {
+    0% { transform: translateY(-100%); }
+    100% { transform: translateY(100vh); }
+  }
+
+  /* ── Responsive ── */
+  @media (max-width: 1200px) {
+    .main {
+      grid-template-columns: 1fr 1fr;
+    }
+    .kpi-row {
+      grid-template-columns: repeat(3, 1fr);
+    }
+    .chart-panel { grid-column: 1 / -1; }
+    .positions-panel { grid-column: 1 / -1; }
+    .agents-grid { grid-template-columns: repeat(2, 1fr); }
+    .janus-grid { grid-template-columns: repeat(2, 1fr); }
+  }
+
+  @media (max-width: 768px) {
+    .main { grid-template-columns: 1fr; padding: 12px; }
+    .kpi-row { grid-template-columns: repeat(2, 1fr); }
+    .chart-panel, .positions-panel { grid-column: 1; }
+    .agents-grid { grid-template-columns: 1fr; }
+    .janus-grid { grid-template-columns: 1fr 1fr; }
+    .topbar-center { display: none; }
+    .kpi-value { font-size: 26px; }
+  }
+</style>
+</head>
+<body>
+
+<!-- ═══════════ TOP BAR ═══════════ -->
+<nav class="topbar">
+  <div class="topbar-left">
+    <div class="logo">ATLAS <span>Polymarket</span></div>
+  </div>
+  <div class="topbar-center">
+    <div class="regime-badge recovery">
+      <div class="regime-dot"></div>
+      PRISM · Recovery
+    </div>
+    <div class="status-indicator">
+      <div class="dot"></div>
+      ALL SYSTEMS NOMINAL
+    </div>
+  </div>
+  <div class="topbar-right">
+    <div class="mode-toggle">PAPER TRADE</div>
+    <div class="status-indicator">
+      <div class="dot" style="background:var(--cyan); box-shadow:0 0 8px var(--cyan);"></div>
+      LIVE
+    </div>
+  </div>
+</nav>
+
+<!-- ═══════════ MAIN DASHBOARD ═══════════ -->
+<div class="main">
+
+  <!-- ── KPI Row ── -->
+  <div class="kpi-row">
+    <div class="kpi-card">
+      <div class="kpi-label">Portfolio Value</div>
+      <div class="kpi-value" style="color:var(--cyan);">$47,832</div>
+      <div class="kpi-sub"><span class="positive">+$2,341 (5.1%)</span> this week</div>
+    </div>
+    <div class="kpi-card">
+      <div class="kpi-label">Total P&L</div>
+      <div class="kpi-value" style="color:var(--green);">+$8,412</div>
+      <div class="kpi-sub"><span class="positive">+21.3%</span> all time</div>
+    </div>
+    <div class="kpi-card">
+      <div class="kpi-label">Win Rate</div>
+      <div class="kpi-value" style="color:var(--orange);">68.4%</div>
+      <div class="kpi-sub">142 / 208 trades</div>
+    </div>
+    <div class="kpi-card">
+      <div class="kpi-label">Active Positions</div>
+      <div class="kpi-value" style="color:var(--purple);">17</div>
+      <div class="kpi-sub">9 esports · 8 sports</div>
+    </div>
+    <div class="kpi-card">
+      <div class="kpi-label">Sharpe Ratio</div>
+      <div class="kpi-value" style="color:var(--amber);">1.84</div>
+      <div class="kpi-sub">30-day rolling</div>
+    </div>
+  </div>
+
+  <!-- ── Performance Chart ── -->
+  <div class="chart-panel">
+    <div class="panel-header">
+      <div class="panel-title">PORTFOLIO PERFORMANCE</div>
+      <div class="panel-tabs">
+        <button class="panel-tab active">7D</button>
+        <button class="panel-tab">30D</button>
+        <button class="panel-tab">90D</button>
+        <button class="panel-tab">ALL</button>
+      </div>
+    </div>
+    <div class="chart-container">
+      <canvas id="perfChart"></canvas>
+    </div>
+  </div>
+
+  <!-- ── PRISM Panel ── -->
+  <div class="prism-panel">
+    <div class="panel-header">
+      <div class="panel-title">PRISM REGIME</div>
+    </div>
+    <div class="prism-regimes">
+      <div class="prism-item active">
+        <div class="prism-icon">▲</div>
+        <div class="prism-info">
+          <div class="prism-name">Recovery</div>
+          <div class="prism-prob">Confidence: 62%</div>
+        </div>
+        <div class="prism-bar-track"><div class="prism-bar-fill"></div></div>
+      </div>
+      <div class="prism-item">
+        <div class="prism-icon">▼</div>
+        <div class="prism-info">
+          <div class="prism-name">Crisis</div>
+          <div class="prism-prob">Confidence: 8%</div>
+        </div>
+        <div class="prism-bar-track"><div class="prism-bar-fill"></div></div>
+      </div>
+      <div class="prism-item">
+        <div class="prism-icon">◆</div>
+        <div class="prism-info">
+          <div class="prism-name">Rate Tightening</div>
+          <div class="prism-prob">Confidence: 12%</div>
+        </div>
+        <div class="prism-bar-track"><div class="prism-bar-fill"></div></div>
+      </div>
+      <div class="prism-item">
+        <div class="prism-icon">●</div>
+        <div class="prism-info">
+          <div class="prism-name">Bull</div>
+          <div class="prism-prob">Confidence: 14%</div>
+        </div>
+        <div class="prism-bar-track"><div class="prism-bar-fill"></div></div>
+      </div>
+      <div class="prism-item">
+        <div class="prism-icon">★</div>
+        <div class="prism-info">
+          <div class="prism-name">Euphoria</div>
+          <div class="prism-prob">Confidence: 4%</div>
+        </div>
+        <div class="prism-bar-track"><div class="prism-bar-fill"></div></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ── Agent Hierarchy ── -->
+  <div class="agents-section">
+    <div class="panel-header">
+      <div class="panel-title">AGENT HIERARCHY</div>
+      <div class="status-indicator">
+        <div class="dot" style="background:var(--cyan); box-shadow:0 0 8px var(--cyan);"></div>
+        16 AGENTS ACTIVE
+      </div>
+    </div>
+    <div class="agents-grid">
+      <div class="agent-layer">
+        <div class="layer-badge">Layer 1</div>
+        <div class="layer-title">MACRO</div>
+        <div class="agent-item">
+          <span class="agent-name">EsportsMacro</span>
+          <span class="agent-accuracy high">72%</span>
+        </div>
+        <div class="agent-item">
+          <span class="agent-name">SportsMacro</span>
+          <span class="agent-accuracy high">69%</span>
+        </div>
+        <div class="agent-item">
+          <span class="agent-name">PolymarketMacro</span>
+          <span class="agent-accuracy mid">58%</span>
+        </div>
+        <div class="agent-item">
+          <span class="agent-name">SentimentMacro</span>
+          <span class="agent-accuracy mid">61%</span>
+        </div>
+      </div>
+      <div class="agent-layer">
+        <div class="layer-badge">Layer 2</div>
+        <div class="layer-title">SECTOR</div>
+        <div class="agent-item">
+          <span class="agent-name">EarningsDesk</span>
+          <span class="agent-accuracy high">74%</span>
+        </div>
+        <div class="agent-item">
+          <span class="agent-name">MetaDesk</span>
+          <span class="agent-accuracy high">71%</span>
+        </div>
+        <div class="agent-item">
+          <span class="agent-name">ScheduleDesk</span>
+          <span class="agent-accuracy mid">63%</span>
+        </div>
+        <div class="agent-item">
+          <span class="agent-name">OddsDesk</span>
+          <span class="agent-accuracy mid">66%</span>
+        </div>
+      </div>
+      <div class="agent-layer">
+        <div class="layer-badge">Layer 3</div>
+        <div class="layer-title">SUPERINVESTOR</div>
+        <div class="agent-item">
+          <span class="agent-name">Druckenmiller</span>
+          <span class="agent-accuracy high">78%</span>
+        </div>
+        <div class="agent-item">
+          <span class="agent-name">Aschenbrenner</span>
+          <span class="agent-accuracy high">73%</span>
+        </div>
+        <div class="agent-item">
+          <span class="agent-name">Ackman</span>
+          <span class="agent-accuracy mid">65%</span>
+        </div>
+        <div class="agent-item">
+          <span class="agent-name">Baker</span>
+          <span class="agent-accuracy mid">62%</span>
+        </div>
+      </div>
+      <div class="agent-layer">
+        <div class="layer-badge">Layer 4</div>
+        <div class="layer-title">DECISION</div>
+        <div class="agent-item">
+          <span class="agent-name">CIOSynthesis</span>
+          <span class="agent-accuracy high">76%</span>
+        </div>
+        <div class="agent-item">
+          <span class="agent-name">AlphaDiscovery</span>
+          <span class="agent-accuracy high">70%</span>
+        </div>
+        <div class="agent-item">
+          <span class="agent-name">CRO</span>
+          <span class="agent-accuracy mid">67%</span>
+        </div>
+        <div class="agent-item">
+          <span class="agent-name">AutonomousExecution</span>
+          <span class="agent-accuracy high">72%</span>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ── Active Positions ── -->
+  <div class="positions-panel">
+    <div class="panel-header">
+      <div class="panel-title">ACTIVE POSITIONS</div>
+      <div class="panel-tabs">
+        <button class="panel-tab active">All</button>
+        <button class="panel-tab">Esports</button>
+        <button class="panel-tab">Sports</button>
+      </div>
+    </div>
+    <table class="positions-table">
+      <thead>
+        <tr>
+          <th>Market</th>
+          <th>Side</th>
+          <th>Entry</th>
+          <th>Current</th>
+          <th>Size</th>
+          <th>P&L</th>
+          <th>Agent</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td>
+            <div class="market-cell">
+              <div class="market-icon esport">🎮</div>
+              <div>
+                <div class="market-name">T1 vs GenG — Worlds 2025</div>
+                <div class="market-sub">League of Legends · Semi-Final</div>
+              </div>
+            </div>
+          </td>
+          <td><span class="side-badge yes">YES</span></td>
+          <td>0.62</td>
+          <td>0.71</td>
+          <td>$1,200</td>
+          <td class="pnl-positive">+$174</td>
+          <td style="color:var(--cyan);">Druckenmiller</td>
+        </tr>
+        <tr>
+          <td>
+            <div class="market-cell">
+              <div class="market-icon sport">⚽</div>
+              <div>
+                <div class="market-name">Man City — Premier League Champ</div>
+                <div class="market-sub">Football · Season Winner</div>
+              </div>
+            </div>
+          </td>
+          <td><span class="side-badge yes">YES</span></td>
+          <td>0.38</td>
+          <td>0.44</td>
+          <td>$800</td>
+          <td class="pnl-positive">+$126</td>
+          <td style="color:var(--cyan);">Ackman</td>
+        </tr>
+        <tr>
+          <td>
+            <div class="market-cell">
+              <div class="market-icon esport">🎯</div>
+              <div>
+                <div class="market-name">NAVI — Major Copenhagen</div>
+                <div class="market-sub">CS2 · Grand Final</div>
+              </div>
+            </div>
+          </td>
+          <td><span class="side-badge no">NO</span></td>
+          <td>0.55</td>
+          <td>0.48</td>
+          <td>$950</td>
+          <td class="pnl-positive">+$133</td>
+          <td style="color:var(--cyan);">Aschenbrenner</td>
+        </tr>
+        <tr>
+          <td>
+            <div class="market-cell">
+              <div class="market-icon sport">🏈</div>
+              <div>
+                <div class="market-name">Chiefs — Super Bowl LX</div>
+                <div class="market-sub">NFL · Championship</div>
+              </div>
+            </div>
+          </td>
+          <td><span class="side-badge yes">YES</span></td>
+          <td>0.22</td>
+          <td>0.19</td>
+          <td>$600</td>
+          <td class="pnl-negative">-$82</td>
+          <td style="color:var(--cyan);">Druckenmiller</td>
+        </tr>
+        <tr>
+          <td>
+            <div class="market-cell">
+              <div class="market-icon esport">🎮</div>
+              <div>
+                <div class="market-name">Faker retires before 2026</div>
+                <div class="market-sub">LoL · Transfer Market</div>
+              </div>
+            </div>
+          </td>
+          <td><span class="side-badge no">NO</span></td>
+          <td>0.75</td>
+          <td>0.81</td>
+          <td>$500</td>
+          <td class="pnl-negative">-$40</td>
+          <td style="color:var(--cyan);">MetaDesk</td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+
+  <!-- ── Activity Feed ── -->
+  <div class="feed-panel">
+    <div class="panel-header">
+      <div class="panel-title">LIVE FEED</div>
+    </div>
+    <div class="feed-list">
+      <div class="feed-item">
+        <div class="feed-time">2m ago</div>
+        <div class="feed-body">
+          <div class="feed-action"><span class="green">BUY</span> <strong>T1 vs GenG YES</strong> @ 0.62 — $400 added</div>
+          <div class="feed-agent">Druckenmiller → AutonomousExecution</div>
+        </div>
+      </div>
+      <div class="feed-item">
+        <div class="feed-time">8m ago</div>
+        <div class="feed-body">
+          <div class="feed-action"><span class="cyan">REGIME SHIFT</span> PRISM updated: <strong>Recovery</strong> (62%)</div>
+          <div class="feed-agent">PolymarketMacro</div>
+        </div>
+      </div>
+      <div class="feed-item">
+        <div class="feed-time">14m ago</div>
+        <div class="feed-body">
+          <div class="feed-action"><span class="red">SELL</span> <strong>Cloud9 wins LCS</strong> — Closed @ 0.31</div>
+          <div class="feed-agent">CIOSynthesis → CRO</div>
+        </div>
+      </div>
+      <div class="feed-item">
+        <div class="feed-time">22m ago</div>
+        <div class="feed-body">
+          <div class="feed-action"><span class="orange">SENTIMENT</span> Twitter/X spike on <strong>Worlds 2025</strong> (+340%)</div>
+          <div class="feed-agent">SentimentMacro</div>
+        </div>
+      </div>
+      <div class="feed-item">
+        <div class="feed-time">31m ago</div>
+        <div class="feed-body">
+          <div class="feed-action"><span class="green">BUY</span> <strong>NAVI Major NO</strong> @ 0.55 — $950</div>
+          <div class="feed-agent">Aschenbrenner → AlphaDiscovery</div>
+        </div>
+      </div>
+      <div class="feed-item">
+        <div class="feed-time">45m ago</div>
+        <div class="feed-body">
+          <div class="feed-action"><span class="purple">META SHIFT</span> LoL patch 14.22 analysis complete</div>
+          <div class="feed-agent">MetaDesk</div>
+        </div>
+      </div>
+      <div class="feed-item">
+        <div class="feed-time">1h ago</div>
+        <div class="feed-body">
+          <div class="feed-action"><span class="cyan">WEIGHT UPDATE</span> JANUS recalibrated Druckenmiller → <strong>0.31</strong></div>
+          <div class="feed-agent">JANUS Meta-Weighting</div>
+        </div>
+      </div>
+      <div class="feed-item">
+        <div class="feed-time">1h ago</div>
+        <div class="feed-body">
+          <div class="feed-action"><span class="green">BUY</span> <strong>Man City EPL YES</strong> @ 0.38 — $800</div>
+          <div class="feed-agent">Ackman → AutonomousExecution</div>
+        </div>
+      </div>
+      <div class="feed-item">
+        <div class="feed-time">2h ago</div>
+        <div class="feed-body">
+          <div class="feed-action"><span class="orange">SCHEDULE</span> 3 new esports events detected for next week</div>
+          <div class="feed-agent">ScheduleDesk</div>
+        </div>
+      </div>
+      <div class="feed-item">
+        <div class="feed-time">3h ago</div>
+        <div class="feed-body">
+          <div class="feed-action"><span class="cyan">AUTORESEARCH</span> Prompt v2.4.1 committed — Druckenmiller optimized</div>
+          <div class="feed-agent">Autoresearch Engine</div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ── JANUS Superinvestor Weights ── -->
+  <div class="janus-section">
+    <div class="panel-header">
+      <div class="panel-title">JANUS · SUPERINVESTOR COHORT</div>
+      <div class="status-indicator">Meta-weighted by accuracy</div>
+    </div>
+    <div class="janus-grid">
+      <div class="janus-card">
+        <div class="janus-avatar">DR</div>
+        <div class="janus-name">DRUCKENMILLER</div>
+        <div class="janus-role">Momentum · Macro</div>
+        <div class="janus-stat">
+          <span class="janus-stat-label">Weight</span>
+          <span class="janus-stat-value" style="color:var(--cyan);">0.31</span>
+        </div>
+        <div class="janus-stat">
+          <span class="janus-stat-label">Accuracy</span>
+          <span class="janus-stat-value" style="color:var(--green);">78%</span>
+        </div>
+        <div class="janus-stat">
+          <span class="janus-stat-label">Trades</span>
+          <span class="janus-stat-value">54</span>
+        </div>
+      </div>
+      <div class="janus-card">
+        <div class="janus-avatar">AS</div>
+        <div class="janus-name">ASCHENBRENNER</div>
+        <div class="janus-role">Contrarian · Risk</div>
+        <div class="janus-stat">
+          <span class="janus-stat-label">Weight</span>
+          <span class="janus-stat-value" style="color:var(--orange);">0.27</span>
+        </div>
+        <div class="janus-stat">
+          <span class="janus-stat-label">Accuracy</span>
+          <span class="janus-stat-value" style="color:var(--green);">73%</span>
+        </div>
+        <div class="janus-stat">
+          <span class="janus-stat-label">Trades</span>
+          <span class="janus-stat-value">47</span>
+        </div>
+      </div>
+      <div class="janus-card">
+        <div class="janus-avatar">AC</div>
+        <div class="janus-name">ACKMAN</div>
+        <div class="janus-role">Value · Catalyst</div>
+        <div class="janus-stat">
+          <span class="janus-stat-label">Weight</span>
+          <span class="janus-stat-value" style="color:var(--green);">0.23</span>
+        </div>
+        <div class="janus-stat">
+          <span class="janus-stat-label">Accuracy</span>
+          <span class="janus-stat-value" style="color:var(--amber);">65%</span>
+        </div>
+        <div class="janus-stat">
+          <span class="janus-stat-label">Trades</span>
+          <span class="janus-stat-value">38</span>
+        </div>
+      </div>
+      <div class="janus-card">
+        <div class="janus-avatar">BK</div>
+        <div class="janus-name">BAKER</div>
+        <div class="janus-role">Sentiment · Flow</div>
+        <div class="janus-stat">
+          <span class="janus-stat-label">Weight</span>
+          <span class="janus-stat-value" style="color:var(--purple);">0.19</span>
+        </div>
+        <div class="janus-stat">
+          <span class="janus-stat-label">Accuracy</span>
+          <span class="janus-stat-value" style="color:var(--amber);">62%</span>
+        </div>
+        <div class="janus-stat">
+          <span class="janus-stat-label">Trades</span>
+          <span class="janus-stat-value">31</span>
+        </div>
+      </div>
+    </div>
+  </div>
+
+</div>
+
+<!-- ═══════════ CHART.JS ═══════════ -->
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.4/dist/chart.umd.min.js"></script>
+<script>
+  // ── Performance Chart ──
+  const ctx = document.getElementById('perfChart').getContext('2d');
+
+  const labels = ['Mon','Tue','Wed','Thu','Fri','Sat','Sun'];
+  const data = [44200, 45100, 44800, 46300, 45900, 47100, 47832];
+
+  const gradient = ctx.createLinearGradient(0, 0, 0, 280);
+  gradient.addColorStop(0, 'rgba(0, 229, 255, 0.12)');
+  gradient.addColorStop(0.5, 'rgba(0, 229, 255, 0.03)');
+  gradient.addColorStop(1, 'rgba(0, 229, 255, 0)');
+
+  new Chart(ctx, {
+    type: 'line',
+    data: {
+      labels,
+      datasets: [{
+        data,
+        borderColor: '#00e5ff',
+        borderWidth: 2,
+        backgroundColor: gradient,
+        fill: true,
+        tension: 0.4,
+        pointRadius: 0,
+        pointHoverRadius: 5,
+        pointHoverBackgroundColor: '#00e5ff',
+        pointHoverBorderColor: '#0a0a12',
+        pointHoverBorderWidth: 3,
+      }]
+    },
+    options: {
+      responsive: true,
+      maintainAspectRatio: false,
+      interaction: {
+        mode: 'index',
+        intersect: false,
+      },
+      plugins: {
+        legend: { display: false },
+        tooltip: {
+          backgroundColor: '#1a1a2e',
+          titleColor: '#8888a0',
+          bodyColor: '#e8e8f0',
+          borderColor: 'rgba(255,255,255,0.08)',
+          borderWidth: 1,
+          titleFont: { family: "'DM Mono', monospace", size: 10 },
+          bodyFont: { family: "'DM Mono', monospace", size: 13, weight: '500' },
+          padding: 12,
+          cornerRadius: 8,
+          displayColors: false,
+          callbacks: {
+            title: (items) => items[0].label.toUpperCase(),
+            label: (item) => '$' + item.parsed.y.toLocaleString(),
+          }
+        }
+      },
+      scales: {
+        x: {
+          grid: { color: 'rgba(255,255,255,0.03)', drawBorder: false },
+          ticks: {
+            color: '#55556a',
+            font: { family: "'DM Mono', monospace", size: 10 },
+          },
+          border: { display: false },
+        },
+        y: {
+          position: 'right',
+          grid: { color: 'rgba(255,255,255,0.03)', drawBorder: false },
+          ticks: {
+            color: '#55556a',
+            font: { family: "'DM Mono', monospace", size: 10 },
+            callback: (v) => '$' + (v/1000).toFixed(0) + 'k',
+            maxTicksLimit: 5,
+          },
+          border: { display: false },
+        }
+      }
+    }
+  });
+
+  // ── Tab interaction ──
+  document.querySelectorAll('.panel-tabs').forEach(group => {
+    group.querySelectorAll('.panel-tab').forEach(tab => {
+      tab.addEventListener('click', () => {
+        group.querySelectorAll('.panel-tab').forEach(t => t.classList.remove('active'));
+        tab.classList.add('active');
+      });
+    });
+  });
+
+  // ── Live clock in status ──
+  function updateClock() {
+    const now = new Date();
+    const h = String(now.getHours()).padStart(2, '0');
+    const m = String(now.getMinutes()).padStart(2, '0');
+    const s = String(now.getSeconds()).padStart(2, '0');
+    document.querySelector('.topbar-right .status-indicator:last-child')
+      && (document.querySelector('.topbar-right .status-indicator:last-child').childNodes[2]
+      && (document.querySelector('.topbar-right .status-indicator:last-child').childNodes[2].textContent = ` ${h}:${m}:${s} UTC`));
+  }
+  setInterval(updateClock, 1000);
+</script>
+
+</body>
+</html>

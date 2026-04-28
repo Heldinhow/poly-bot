@@ -30,9 +30,12 @@ All project changes are recorded in **`docs/changelog.md`**. Check this file fir
 - Python 3.14
 - PostgreSQL 16 + `psycopg2-binary`
 - `httpx` for HTTP
+- `aiohttp` for API server
 - `pydantic-settings` for config
 - `python-telegram-bot` for alerts
 - MiniMax API for LLM inference
+- React 19 + TypeScript + Vite 6 (dashboard frontend)
+- Tailwind CSS v4 + TanStack Query + Recharts (dashboard UI)
 
 ### Key Entry Points
 - `main.py` — Application entry point, main loop
@@ -60,6 +63,7 @@ All project changes are recorded in **`docs/changelog.md`**. Check this file fir
 | `INITIAL_BANKROLL` | No | 50.0 | Starting bankroll |
 | `KELLY_FRAC` | No | 0.25 | Kelly fraction (0-1) |
 | `MIN_EDGE` | No | 0.05 | Minimum edge threshold |
+| `API_PORT` | No | 8080 | HTTP API server port |
 
 ### Database
 - Schema initialized automatically on startup (`init_schema()`)

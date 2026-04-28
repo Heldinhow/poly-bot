@@ -29,6 +29,9 @@ class Settings(BaseSettings):
     # Database
     database_url: str
 
+    # API Server
+    api_port: int = 8080
+
     # MiniMax API
     minimax_api_key: str
     minimax_base_url: str = "https://api.minimax.chat/v1"

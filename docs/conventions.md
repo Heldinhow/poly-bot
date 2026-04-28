@@ -53,7 +53,7 @@
 ├── portfolio.py         # Bankroll + bet management
 ├── reporter.py          # Market resolution
 ├── alerts.py            # Telegram notifications
-├── dashboard.py         # HTML dashboard
+├── api.py               # HTTP API server (aiohttp) — serves JSON + static files
 ├── llm.py               # LLM client
 ├── requirements.txt     # Dependencies
 ├── docker-compose.yml   # PostgreSQL container
@@ -83,9 +83,13 @@
 ├── scripts/             # Utility scripts
 │   └── migrate_csv.py   # CSV → PostgreSQL migration
 │
-└── dashboard/           # Generated output
-    ├── index.html
-    └── state.json
+└── frontend/            # React SPA dashboard (ATLAS v2)
+    ├── src/
+    │   ├── components/  # React components
+    │   ├── hooks/       # TanStack Query hooks
+    │   ├── lib/         # API client + types
+    │   └── styles/      # Global CSS + theme
+    └── dist/            # Production build (served by api.py)
 ```
 
 ## Data Models

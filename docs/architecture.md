@@ -12,6 +12,10 @@ Single Python process with an infinite loop. All components run in the same memo
 |-------|-----------|
 | Language | Python 3.14 |
 | HTTP Client | `httpx` |
+| API Server | `aiohttp` |
+| Frontend | React 19 + TypeScript + Vite 6 + Tailwind CSS v4 |
+| State Management | TanStack Query |
+| Charts | Recharts |
 | Config | `pydantic-settings` + `.env` |
 | Database | PostgreSQL 16 + `psycopg2-binary` |
 | Notifications | `python-telegram-bot` |
@@ -29,7 +33,7 @@ main.py              Entry point, infinite loop
 ├── portfolio.py     PaperPortfolio: bankroll + Kelly + DB persistence
 ├── reporter.py      MarketResolver: check closed markets
 ├── alerts.py        Telegram Bot alerts
-├── dashboard.py     HTML dashboard generation
+├── api.py           HTTP API server (aiohttp) — serves JSON + static frontend
 ├── llm.py           MiniMax API client
 ├── agents/          AI agent implementations
 │   ├── base.py      BaseAgent abstract class
@@ -41,8 +45,14 @@ main.py              Entry point, infinite loop
 │   └── repository.py   BetRepository (CRUD)
 ├── models/          Data models
 │   └── bet.py       Bet dataclass (paper + live)
-└── trading/         Trading infrastructure
-    └── mode_gate.py TradingModeGate (env toggle)
+├── trading/         Trading infrastructure
+│   └── mode_gate.py TradingModeGate (env toggle)
+└── frontend/        React SPA dashboard (ATLAS v2)
+    ├── src/
+    │   ├── components/   KPI, Chart, Tables, Header
+    │   ├── hooks/        TanStack Query hooks
+    │   └── lib/          API client + types
+    └── dist/          Production build (served by api.py)
 ```
 
 ## Key Components
@@ -66,16 +76,21 @@ Reads `TRADING_MODE` env var and provides mode information. Safety gate for futu
 
 ```
 Polymarket API ──▶ client.py ──▶ scanner.py
-                                    │
-                                    ├──▶ filters.py ──▶ value markets
-                                    │
-                                    ├──▶ agents/*.py (async concurrent)
-                                    │
-                                    ├──▶ decision.py
-                                    │
-                                    ├──▶ portfolio.py ──▶ db/repository.py ──▶ PostgreSQL
-                                    │
-                                    └──▶ alerts.py ──▶ Telegram
+                                     │
+                                     ├──▶ filters.py ──▶ value markets
+                                     │
+                                     ├──▶ agents/*.py (async concurrent)
+                                     │
+                                     ├──▶ decision.py
+                                     │
+                                     ├──▶ portfolio.py ──▶ db/repository.py ──▶ PostgreSQL
+                                     │                                              ▲
+                                     │                                              │
+                                     │         ┌────────────────────────────────────┘
+                                     │         │
+                                     │    api.py ──▶ React SPA (frontend/dist/)
+                                     │         │
+                                     └──▶ alerts.py ──▶ Telegram
 ```
 
 ## Important Design Decisions
