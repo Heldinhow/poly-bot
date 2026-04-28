@@ -116,6 +116,8 @@ class ExecutionTracker:
             failure_reason=failure_reason,
             input_tokens=result.input_tokens,
             output_tokens=result.output_tokens,
+            agent_name=result.agent_name or None,
+            prompt_used=result.prompt_used or None,
         )
         if success:
             logger.info(f"Execution log finalized: id={log_id}, status={status}")

@@ -381,6 +381,9 @@ class APIHandler:
                 limit=limit,
                 offset=offset,
             )
+            # Strip large fields from list view (available in detail endpoint)
+            for exec_ in executions:
+                exec_.pop("raw_output", None)
             return web.json_response(_serialize_json(executions))
         except Exception as e:
             logger.exception("Error in /api/executions")

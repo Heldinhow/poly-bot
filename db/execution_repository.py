@@ -78,6 +78,8 @@ class ExecutionRepository:
         failure_reason: Optional[str] = None,
         input_tokens: int = 0,
         output_tokens: int = 0,
+        agent_name: Optional[str] = None,
+        prompt_used: Optional[str] = None,
     ) -> bool:
         with get_db_cursor() as cursor:
             cursor.execute(
@@ -94,6 +96,8 @@ class ExecutionRepository:
                     failure_reason = %s,
                     input_tokens = %s,
                     output_tokens = %s,
+                    agent_name = COALESCE(%s, agent_name),
+                    prompt_used = COALESCE(%s, prompt_used),
                     duration_ms = EXTRACT(EPOCH FROM (NOW() - started_at)) * 1000
                 WHERE id = %s
                 RETURNING id
@@ -102,7 +106,7 @@ class ExecutionRepository:
                     status, probability, confidence, reasoning,
                     psycopg2.extras.Json(sources) if sources is not None else None,
                     raw_output, error_message, failure_reason,
-                    input_tokens, output_tokens, str(log_id),
+                    input_tokens, output_tokens, agent_name, prompt_used, str(log_id),
                 ),
             )
             result = cursor.fetchone()

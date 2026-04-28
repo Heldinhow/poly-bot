@@ -86,6 +86,20 @@ CREATE INDEX IF NOT EXISTS idx_cache_analyzed_at ON market_analysis_cache(analyz
 CREATE INDEX IF NOT EXISTS idx_cache_decision ON market_analysis_cache(decision);
 
 -- ============================================================
+-- Migrations for existing tables
+-- ============================================================
+
+DO $$
+BEGIN
+    IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'execution_logs' AND column_name = 'agent_name') THEN
+        ALTER TABLE execution_logs ADD COLUMN agent_name TEXT;
+    END IF;
+    IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'execution_logs' AND column_name = 'prompt_used') THEN
+        ALTER TABLE execution_logs ADD COLUMN prompt_used TEXT;
+    END IF;
+END$$;
+
+-- ============================================================
 -- Agent Runtime Tables
 -- ============================================================
 
@@ -127,6 +141,7 @@ CREATE TABLE IF NOT EXISTS execution_logs (
     task_id             TEXT NOT NULL,
     market_id           TEXT NOT NULL,
     agent_id            UUID REFERENCES agents(id),
+    agent_name          TEXT,  -- denormalized for fast access
     runtime             TEXT NOT NULL,
     model               TEXT,
     status              TEXT NOT NULL DEFAULT 'queued',  -- queued | claimed | running | completed | failed | cancelled
@@ -139,6 +154,7 @@ CREATE TABLE IF NOT EXISTS execution_logs (
     reasoning           TEXT,
     sources             JSONB,
     raw_output          TEXT,
+    prompt_used         TEXT,
     error_message       TEXT,
     failure_reason      TEXT,  -- timeout | agent_error | runtime_offline | parse_error
     input_tokens        BIGINT DEFAULT 0,
