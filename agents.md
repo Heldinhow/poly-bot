@@ -43,6 +43,10 @@ All project changes are recorded in **`docs/changelog.md`**. Check this file fir
 - `config.py` — All configuration via Pydantic Settings
 - `db/schema.sql` — Database schema
 - `db/repository.py` — All database operations
+- `agents/runtime/runner.py` — AgentRunner (orchestrates agent runtime pipeline)
+- `agents/runtime/manager.py` — RuntimeManager (auto-detects CLIs, executes tasks)
+- `agents/registry.py` — AgentRegistry (DB-backed agent selection)
+- `agents/tracker.py` — ExecutionTracker (stream → DB persistence)
 
 ### Critical Business Rules
 1. Only one open bet per `market_id` per `trading_mode`
@@ -64,6 +68,9 @@ All project changes are recorded in **`docs/changelog.md`**. Check this file fir
 | `KELLY_FRAC` | No | 0.25 | Kelly fraction (0-1) |
 | `MIN_EDGE` | No | 0.05 | Minimum edge threshold |
 | `API_PORT` | No | 8080 | HTTP API server port |
+| `WORKSPACE_ROOT` | No | `~/polybot_workspaces` | Root directory for agent workspaces |
+| `AGENT_TIMEOUT_SECS` | No | 1200 | Max seconds per agent task (20 min) |
+| `AGENT_MAX_RETRIES` | No | 1 | Max retries per agent task |
 
 ### Database
 - Schema initialized automatically on startup (`init_schema()`)

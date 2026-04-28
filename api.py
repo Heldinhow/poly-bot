@@ -4,8 +4,14 @@ import os
 import threading
 from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime, timedelta
+from uuid import UUID
 
 from aiohttp import web
+
+from db.agent_repository import AgentRepository
+from db.agent_skill_repository import AgentSkillRepository
+from db.execution_repository import ExecutionRepository
+from db.skill_repository import SkillRepository
 
 logger = logging.getLogger(__name__)
 
@@ -31,7 +37,7 @@ async def cors_middleware(request, handler):
                 status=500,
             )
     response.headers["Access-Control-Allow-Origin"] = "*"
-    response.headers["Access-Control-Allow-Methods"] = "GET, OPTIONS"
+    response.headers["Access-Control-Allow-Methods"] = "GET, POST, PUT, DELETE, OPTIONS"
     response.headers["Access-Control-Allow-Headers"] = "Content-Type"
     return response
 
@@ -43,6 +49,10 @@ class APIHandler:
         self.portfolio = portfolio
         self._lock = threading.Lock()
         self._executor = ThreadPoolExecutor(max_workers=2)
+        self._agent_repo = AgentRepository()
+        self._skill_repo = SkillRepository()
+        self._execution_repo = ExecutionRepository()
+        self._agent_skill_repo = AgentSkillRepository()
 
     def _safe_stats(self):
         with self._lock:
@@ -171,6 +181,210 @@ class APIHandler:
 
         return web.json_response(result)
 
+    # ------------------------------------------------------------------
+    # Agents
+    # ------------------------------------------------------------------
+
+    async def list_agents(self, request):
+        """GET /api/agents — list all active agents."""
+        try:
+            agents = self._agent_repo.list_agents(active_only=True)
+            # Load skills for each agent
+            for agent in agents:
+                agent["skills"] = self._agent_skill_repo.get_skills_for_agent(agent["id"])
+            return web.json_response(agents)
+        except Exception as e:
+            logger.exception("Error in /api/agents")
+            return web.json_response({"error": str(e)}, status=500)
+
+    async def get_agent(self, request):
+        """GET /api/agents/:id — get agent by id."""
+        try:
+            agent_id = UUID(request.match_info["id"])
+            agent = self._agent_repo.get_agent_by_id(agent_id)
+            if not agent:
+                return web.json_response({"error": "Agent not found"}, status=404)
+            agent["skills"] = self._agent_skill_repo.get_skills_for_agent(agent_id)
+            return web.json_response(agent)
+        except Exception as e:
+            logger.exception("Error in GET /api/agents/:id")
+            return web.json_response({"error": str(e)}, status=500)
+
+    async def create_agent(self, request):
+        """POST /api/agents — create a new agent."""
+        try:
+            data = await request.json()
+            agent_id = self._agent_repo.create_agent(
+                name=data["name"],
+                runtime=data["runtime"],
+                description=data.get("description"),
+                model=data.get("model"),
+                system_prompt=data.get("system_prompt"),
+                max_concurrent_tasks=data.get("max_concurrent_tasks", 1),
+                max_retries=data.get("max_retries", 1),
+                custom_args=data.get("custom_args", []),
+                custom_env=data.get("custom_env", {}),
+            )
+            # Link skills if provided
+            skill_ids = data.get("skill_ids", [])
+            for skill_id_str in skill_ids:
+                self._agent_skill_repo.link_skill(agent_id, UUID(skill_id_str))
+            return web.json_response({"id": str(agent_id)}, status=201)
+        except Exception as e:
+            logger.exception("Error in POST /api/agents")
+            return web.json_response({"error": str(e)}, status=500)
+
+    async def update_agent(self, request):
+        """PUT /api/agents/:id — update an agent."""
+        try:
+            agent_id = UUID(request.match_info["id"])
+            data = await request.json()
+            self._agent_repo.update_agent(
+                agent_id,
+                name=data.get("name"),
+                description=data.get("description"),
+                runtime=data.get("runtime"),
+                model=data.get("model"),
+                system_prompt=data.get("system_prompt"),
+                max_concurrent_tasks=data.get("max_concurrent_tasks"),
+                max_retries=data.get("max_retries"),
+                custom_args=data.get("custom_args"),
+                custom_env=data.get("custom_env"),
+                is_active=data.get("is_active"),
+            )
+            # Update skills if provided
+            if "skill_ids" in data:
+                skill_ids = [UUID(s) for s in data["skill_ids"]]
+                self._agent_skill_repo.set_skills_for_agent(agent_id, skill_ids)
+            return web.json_response({"success": True})
+        except Exception as e:
+            logger.exception("Error in PUT /api/agents/:id")
+            return web.json_response({"error": str(e)}, status=500)
+
+    async def delete_agent(self, request):
+        """DELETE /api/agents/:id — delete an agent."""
+        try:
+            agent_id = UUID(request.match_info["id"])
+            self._agent_repo.delete_agent(agent_id)
+            return web.json_response({"success": True})
+        except Exception as e:
+            logger.exception("Error in DELETE /api/agents/:id")
+            return web.json_response({"error": str(e)}, status=500)
+
+    # ------------------------------------------------------------------
+    # Skills
+    # ------------------------------------------------------------------
+
+    async def list_skills(self, request):
+        """GET /api/skills — list all active skills."""
+        try:
+            skills = self._skill_repo.list_skills(active_only=True)
+            return web.json_response(skills)
+        except Exception as e:
+            logger.exception("Error in /api/skills")
+            return web.json_response({"error": str(e)}, status=500)
+
+    async def get_skill(self, request):
+        """GET /api/skills/:id — get skill by id."""
+        try:
+            skill_id = UUID(request.match_info["id"])
+            skill = self._skill_repo.get_skill_by_id(skill_id)
+            if not skill:
+                return web.json_response({"error": "Skill not found"}, status=404)
+            return web.json_response(skill)
+        except Exception as e:
+            logger.exception("Error in GET /api/skills/:id")
+            return web.json_response({"error": str(e)}, status=500)
+
+    async def create_skill(self, request):
+        """POST /api/skills — create a new skill."""
+        try:
+            data = await request.json()
+            skill_id = self._skill_repo.create_skill(
+                name=data["name"],
+                content=data["content"],
+                description=data.get("description"),
+            )
+            return web.json_response({"id": str(skill_id)}, status=201)
+        except Exception as e:
+            logger.exception("Error in POST /api/skills")
+            return web.json_response({"error": str(e)}, status=500)
+
+    async def update_skill(self, request):
+        """PUT /api/skills/:id — update a skill."""
+        try:
+            skill_id = UUID(request.match_info["id"])
+            data = await request.json()
+            self._skill_repo.update_skill(
+                skill_id,
+                name=data.get("name"),
+                description=data.get("description"),
+                content=data.get("content"),
+                is_active=data.get("is_active"),
+            )
+            return web.json_response({"success": True})
+        except Exception as e:
+            logger.exception("Error in PUT /api/skills/:id")
+            return web.json_response({"error": str(e)}, status=500)
+
+    async def delete_skill(self, request):
+        """DELETE /api/skills/:id — delete a skill."""
+        try:
+            skill_id = UUID(request.match_info["id"])
+            self._skill_repo.delete_skill(skill_id)
+            return web.json_response({"success": True})
+        except Exception as e:
+            logger.exception("Error in DELETE /api/skills/:id")
+            return web.json_response({"error": str(e)}, status=500)
+
+    # ------------------------------------------------------------------
+    # Executions
+    # ------------------------------------------------------------------
+
+    async def list_executions(self, request):
+        """GET /api/executions — list executions with optional filters."""
+        try:
+            market_id = request.query.get("market_id")
+            status = request.query.get("status")
+            limit = int(request.query.get("limit", "100"))
+            offset = int(request.query.get("offset", "0"))
+            executions = self._execution_repo.list_logs(
+                market_id=market_id,
+                status=status,
+                limit=limit,
+                offset=offset,
+            )
+            return web.json_response(executions)
+        except Exception as e:
+            logger.exception("Error in /api/executions")
+            return web.json_response({"error": str(e)}, status=500)
+
+    async def get_execution(self, request):
+        """GET /api/executions/:id — get execution detail."""
+        try:
+            log_id = UUID(request.match_info["id"])
+            execution = self._execution_repo.get_log(log_id)
+            if not execution:
+                return web.json_response({"error": "Execution not found"}, status=404)
+            return web.json_response(execution)
+        except Exception as e:
+            logger.exception("Error in GET /api/executions/:id")
+            return web.json_response({"error": str(e)}, status=500)
+
+    async def get_execution_steps(self, request):
+        """GET /api/executions/:id/steps — get execution steps."""
+        try:
+            log_id = UUID(request.match_info["id"])
+            steps = self._execution_repo.list_steps(log_id)
+            return web.json_response(steps)
+        except Exception as e:
+            logger.exception("Error in GET /api/executions/:id/steps")
+            return web.json_response({"error": str(e)}, status=500)
+
+    # ------------------------------------------------------------------
+    # Static files
+    # ------------------------------------------------------------------
+
     async def static_files(self, request):
         """Serve static files from frontend/dist/ with SPA fallback to index.html."""
         path = request.match_info.get("path", "")
@@ -216,10 +430,31 @@ def create_app(portfolio):
     """Create and configure the aiohttp application."""
     handler = APIHandler(portfolio)
     app = web.Application(middlewares=[cors_middleware])
+
+    # Existing routes
     app.router.add_get("/api/stats", handler.stats)
     app.router.add_get("/api/bets/open", handler.open_bets)
     app.router.add_get("/api/bets/resolved", handler.resolved_bets)
     app.router.add_get("/api/bets/timeseries", handler.timeseries)
+
+    # Agent runtime routes
+    app.router.add_get("/api/agents", handler.list_agents)
+    app.router.add_post("/api/agents", handler.create_agent)
+    app.router.add_get("/api/agents/{id}", handler.get_agent)
+    app.router.add_put("/api/agents/{id}", handler.update_agent)
+    app.router.add_delete("/api/agents/{id}", handler.delete_agent)
+
+    app.router.add_get("/api/skills", handler.list_skills)
+    app.router.add_post("/api/skills", handler.create_skill)
+    app.router.add_get("/api/skills/{id}", handler.get_skill)
+    app.router.add_put("/api/skills/{id}", handler.update_skill)
+    app.router.add_delete("/api/skills/{id}", handler.delete_skill)
+
+    app.router.add_get("/api/executions", handler.list_executions)
+    app.router.add_get("/api/executions/{id}", handler.get_execution)
+    app.router.add_get("/api/executions/{id}/steps", handler.get_execution_steps)
+
+    # Static files (SPA fallback — must be last)
     app.router.add_get("/{path:.*}", handler.static_files)
     return app
 

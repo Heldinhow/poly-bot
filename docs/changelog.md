@@ -3,6 +3,44 @@
 ## [Unreleased]
 
 ### Added
+- **Agent Runtime (Multica-style)** — Coding agents execute in isolated workdirs with real-time tracking
+  - `RuntimeManager` auto-detects installed agent CLIs (Claude Code, OpenCode, Hermes, Codex, Gemini, Pi, Cursor, Kimi, Kiro, OpenClaw)
+  - `BackendRegistry` factory allows adding new runtimes dynamically
+  - `GenericBackend` base class with configurable CLI parser
+  - `ClaudeBackend` and `OpencodeBackend` implementations
+  - `ExecutionEnvironment` prepares isolated workdirs with AGENTS.md, SOUL.md, COMMANDS.md, and `.skills/`
+  - `AgentRunner` orchestrates the full pipeline: registry → workdir → backend → tracker → result
+  - Task lifecycle: `enqueue → claim → start → running → complete/fail`
+  - Fallback to legacy agents when runtime fails
+- **Execution Tracking** — 100% of agent executions are traceable step-by-step
+  - `ExecutionTracker` consumes message streams and persists to DB in real-time
+  - `execution_logs` table with status pipeline, timing, result, token usage
+  - `execution_steps` table with granular tracking (text, thinking, tool_use, tool_result, error, status)
+- **Agent Registry + Classifier** — DB-backed agent selection and market categorization
+  - `AgentRegistry` selects agents based on keyword matching in market questions
+  - `MarketClassifier` categorizes markets (weather, commodity, sports, esports, politics, crypto, tech)
+  - Supports ensemble mode when multiple agents match
+- **Circuit Breaker** — Per-runtime resilience (3 consecutive failures → 5min cooldown)
+- **Skills System** — Markdown skills injected into agent context
+  - `skills` table with CRUD operations
+  - `agent_skills` junction table for many-to-many relationships
+  - Default skills: `weather_skill.md`, `commodity_skill.md`, `news_search_skill.md`
+  - Seed script: `scripts/seed_skills.py`
+- **Dashboard — Agents, Skills, Executions tabs**
+  - `AgentsPage` — CRUD for agents (name, runtime, model, system prompt, skills)
+  - `SkillsPage` — CRUD for skills (name, description, markdown content)
+  - `ExecutionsPage` — Monitor agent executions with step-by-step timeline
+  - `useAgents`, `useSkills`, `useExecutions` hooks with TanStack Query
+- **New API Endpoints**
+  - `/api/agents` — CRUD agents
+  - `/api/skills` — CRUD skills
+  - `/api/executions` — List and detail executions with steps
+- **New Database Tables**
+  - `agents` — agent configuration
+  - `skills` — skill content
+  - `agent_skills` — agent-skill relationships
+  - `execution_logs` — execution tracking
+  - `execution_steps` — granular step tracking
 - **ATLAS Dashboard v2** — Modern React + TypeScript + Tailwind CSS v4 SPA
   - Vite 6 build system with hot reload
   - React 19 with TypeScript strict mode

@@ -49,6 +49,40 @@ get_bet_history(mode, resolved, limit) -> list[Bet]  # Filtered query
 get_stats(mode: str | None) -> dict              # Aggregated statistics
 ```
 
+### AgentRepository (`db/agent_repository.py`)
+
+```python
+create_agent(...) -> UUID
+get_agent_by_id(id) -> dict | None
+get_agent_by_name(name) -> dict | None
+list_agents(active_only=True) -> list[dict]
+update_agent(id, **fields) -> bool
+delete_agent(id) -> bool
+```
+
+### SkillRepository (`db/skill_repository.py`)
+
+```python
+create_skill(name, content, description) -> UUID
+get_skill_by_id(id) -> dict | None
+list_skills(active_only=True) -> list[dict]
+update_skill(id, **fields) -> bool
+delete_skill(id) -> bool
+```
+
+### ExecutionRepository (`db/execution_repository.py`)
+
+```python
+create_log(task_id, market_id, agent_id, runtime, model) -> UUID
+claim_log(log_id, runtime) -> bool
+start_log(log_id) -> bool
+update_log_result(log_id, status, probability, confidence, ...) -> bool
+get_log(id) -> dict | None
+list_logs(market_id, agent_id, status, limit, offset) -> list[dict]
+create_step(...) -> UUID
+list_steps(log_id) -> list[dict]
+```
+
 ### PaperPortfolio (`portfolio.py`)
 
 ```python
@@ -67,6 +101,13 @@ is_live_enabled() -> bool
 get_mode_for_bet() -> str    # Mode to tag on new bets
 ```
 
+### AgentRunner (`agents/runtime/runner.py`)
+
+```python
+analyze_market(market_id, question, yes_price, no_price, volume_24h, resolution_date) -> Result | None
+# Orchestrates: registry → exec env → runtime manager → tracker → result
+```
+
 ## Data Patterns
 
 ### Bet Creation Flow
@@ -83,6 +124,45 @@ reporter.resolve_portfolio() ──▶ portfolio.resolve_bet() ──▶ BetRepo
 ```
 PaperPortfolio.stats() ──▶ BetRepository.get_stats() + get_bet_history()
 ```
+
+## Dashboard API Endpoints
+
+### Bets
+
+| Endpoint | Method | Description |
+|----------|--------|-------------|
+| `/api/stats` | GET | Portfolio statistics |
+| `/api/bets/open` | GET | Unresolved bets |
+| `/api/bets/resolved?limit=50` | GET | Resolved bets |
+| `/api/bets/timeseries?days=30` | GET | Daily bankroll replay |
+
+### Agents
+
+| Endpoint | Method | Description |
+|----------|--------|-------------|
+| `/api/agents` | GET | List active agents |
+| `/api/agents` | POST | Create agent |
+| `/api/agents/:id` | GET | Get agent by ID |
+| `/api/agents/:id` | PUT | Update agent |
+| `/api/agents/:id` | DELETE | Delete agent |
+
+### Skills
+
+| Endpoint | Method | Description |
+|----------|--------|-------------|
+| `/api/skills` | GET | List active skills |
+| `/api/skills` | POST | Create skill |
+| `/api/skills/:id` | GET | Get skill by ID |
+| `/api/skills/:id` | PUT | Update skill |
+| `/api/skills/:id` | DELETE | Delete skill |
+
+### Executions
+
+| Endpoint | Method | Description |
+|----------|--------|-------------|
+| `/api/executions?market_id=&status=&limit=100` | GET | List executions |
+| `/api/executions/:id` | GET | Get execution detail |
+| `/api/executions/:id/steps` | GET | Get execution steps |
 
 ## Authentication
 

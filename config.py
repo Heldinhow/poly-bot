@@ -43,6 +43,11 @@ class Settings(BaseSettings):
     high_confidence_threshold: float = 0.60
     low_confidence_threshold: float = 0.40
 
+    # Agent Runtime
+    workspace_root: str = "~/polybot_workspaces"
+    agent_timeout_secs: int = 1200  # 20 minutes
+    agent_max_retries: int = 1
+
     class Config:
         env_file = ".env"
         env_file_encoding = "utf-8"

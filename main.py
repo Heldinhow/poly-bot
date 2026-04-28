@@ -14,6 +14,7 @@ from db.connection import init_schema, health_check
 from db.repository import BetRepository
 from trading.mode_gate import TradingModeGate
 from api import start_api_server, stop_api_server
+from agents.runtime.runner import AgentRunner
 
 
 def setup_logging() -> None:
@@ -51,7 +52,6 @@ def main() -> None:
     logger.info(f"Bankroll: ${settings.initial_bankroll:.2f}")
     logger.info(f"Kelly fraction: {settings.kelly_frac:.0%}")
     logger.info(f"Scan interval: {settings.scan_interval_secs}s")
-    logger.info(f"AI agents: 3 (Sports, Esports, Odds)")
     logger.info(f"Decision thresholds: HIGH > {settings.high_confidence_threshold:.0%}, LOW < {settings.low_confidence_threshold:.0%}")
 
     client = PolymarketClient()
@@ -72,6 +72,17 @@ def main() -> None:
     decision_gate = DecisionGate()
     ai_agents = create_default_agents()
 
+    # Agent Runtime setup
+    agent_runner = AgentRunner()
+    installed_runtimes = agent_runner._runtime.detect_installed_runtimes()
+    if installed_runtimes:
+        logger.info(f"Agent Runtime: {len(installed_runtimes)} runtime(s) detected — {', '.join(installed_runtimes)}")
+        logger.info(f"AI agents: 3 legacy + Agent Runtime ({', '.join(installed_runtimes)})")
+    else:
+        logger.info("Agent Runtime: no coding agents detected on PATH — using legacy agents only")
+        logger.info("AI agents: 3 legacy (Sports, Esports, Odds)")
+        agent_runner = None
+
     scanner = Scanner(
         client=client,
         alert_sender=alert_sender,
@@ -79,6 +90,7 @@ def main() -> None:
         resolver=resolver,
         ai_agents=ai_agents,
         decision_gate=decision_gate,
+        agent_runner=agent_runner,
     )
 
     logger.info("Starting main loop...")

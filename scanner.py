@@ -21,6 +21,7 @@ class Scanner:
         resolver: MarketResolver | None = None,
         ai_agents: list | None = None,
         decision_gate: DecisionGate | None = None,
+        agent_runner=None,
     ) -> None:
         self._client = client
         self._sender = alert_sender
@@ -28,12 +29,14 @@ class Scanner:
         self._resolver = resolver
         self._ai_agents = ai_agents or []
         self._decision_gate = decision_gate
+        self._agent_runner = agent_runner
         
         settings = get_settings()
         self._vol_pred, self._value_pred, self._live_pred = build_filter_predicates(
             settings.min_volume, settings.max_price, settings.max_odds
         )
-        logger.info("Scanner initialized" + (" [PAPER MODE]" if portfolio else ""))
+        mode = "AGENT RUNTIME" if agent_runner else "LEGACY"
+        logger.info(f"Scanner initialized [{mode} MODE]" + (" [PAPER]" if portfolio else ""))
 
     async def _analyze_market(self, market) -> tuple[float | None, str]:
         """Run all AI agents for a single market concurrently."""
@@ -104,21 +107,50 @@ class Scanner:
                 odds = 1.0 / underdog_price
                 implied_prob = underdog_price
 
-                # AI Analysis Layer — run within persistent loop
+                # AI Analysis Layer — Agent Runtime first, fallback to legacy agents
                 ai_probability = None
                 ai_analysis = ""
-                if self._ai_agents:
+
+                # Try Agent Runtime first
+                if self._agent_runner:
+                    try:
+                        result = loop.run_until_complete(
+                            self._agent_runner.analyze_market(
+                                market_id=market.id,
+                                question=market.question,
+                                yes_price=market.yes_price,
+                                no_price=market.no_price,
+                                volume_24h=market.volume_24h,
+                                resolution_date=getattr(market, 'resolution_date', None),
+                            )
+                        )
+                        if result and result.probability is not None:
+                            ai_probability = result.probability
+                            ai_analysis = result.reasoning or ""
+                            logger.info(
+                                f"AgentRuntime analysis for {market.question[:50]}: "
+                                f"ai_prob={ai_probability:.2%} | implied={implied_prob:.2%} | odds={odds:.2f}:1"
+                            )
+                        elif result and result.error_message:
+                            logger.warning(
+                                f"AgentRuntime failed for {market.question[:50]}: {result.error_message}"
+                            )
+                    except Exception as e:
+                        logger.error(f"AgentRuntime error for {market.question[:50]}: {e}")
+
+                # Fallback to legacy agents if runtime failed or unavailable
+                if ai_probability is None and self._ai_agents:
                     try:
                         ai_probability, ai_analysis = loop.run_until_complete(
                             self._analyze_market(market)
                         )
                         if ai_probability is not None:
                             logger.info(
-                                f"AI analysis for {market.question[:50]}: "
+                                f"Legacy AI analysis for {market.question[:50]}: "
                                 f"ai_prob={ai_probability:.2%} | implied={implied_prob:.2%} | odds={odds:.2f}:1"
                             )
                     except Exception as e:
-                        logger.error(f"AI analysis failed for {market.question[:50]}: {e}")
+                        logger.error(f"Legacy AI analysis failed for {market.question[:50]}: {e}")
 
                 # Decision Gate
                 if self._decision_gate and ai_probability is not None:
