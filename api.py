@@ -5,16 +5,21 @@ import re
 import threading
 from concurrent.futures import ThreadPoolExecutor
 import datetime as dt
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from decimal import Decimal
 from uuid import UUID
 
 from aiohttp import web
 
 from db.agent_repository import AgentRepository
+from db.agent_metrics_repository import AgentMetricsRepository
+from db.wallet_watch_list_repository import WalletWatchListRepository
+from db.pending_copy_trades_repository import PendingCopyTradesRepository
 from db.truth_claim_repository import TruthClaimRepository
 from db.decision_factor_repository import DecisionFactorRepository
 from db.execution_summary_repository import ExecutionSummaryRepository
+from models.bet import Bet
+from realtime.events import EXECUTION_STEP
 
 
 # Remove control chars invalid in JSON (allow \n, \r, \t)
@@ -74,16 +79,20 @@ async def cors_middleware(request, handler):
 class APIHandler:
     """HTTP request handlers for the dashboard API."""
 
-    def __init__(self, portfolio, scan_controller=None, event_bus=None):
+    def __init__(self, portfolio, scan_controller=None, event_bus=None, agent_runner=None):
         self.portfolio = portfolio
         self._scan_controller = scan_controller
         self._event_bus = event_bus
+        self._agent_runner = agent_runner
         self._lock = threading.Lock()
         self._executor = ThreadPoolExecutor(max_workers=2)
         self._agent_repo = AgentRepository()
         self._skill_repo = SkillRepository()
         self._execution_repo = ExecutionRepository()
         self._agent_skill_repo = AgentSkillRepository()
+        self._agent_metrics_repo = AgentMetricsRepository()
+        self._wallet_repo = WalletWatchListRepository()
+        self._pending_copy_repo = PendingCopyTradesRepository()
         self._truth_repo = TruthClaimRepository()
         self._factor_repo = DecisionFactorRepository()
         self._summary_repo = ExecutionSummaryRepository()
@@ -305,6 +314,163 @@ class APIHandler:
 
     # ------------------------------------------------------------------
     # Skills
+
+    # ------------------------------------------------------------------
+    # Agent Metrics
+    # ------------------------------------------------------------------
+
+    async def list_agent_metrics(self, request):
+        """GET /api/agents/metrics — list all agent metrics."""
+        try:
+            metrics = self._agent_metrics_repo.get_all()
+            return web.json_response(_serialize_json(list(metrics)))
+        except Exception as e:
+            logger.exception('Error in /api/agents/metrics')
+            return web.json_response({'error': str(e)}, status=500)
+
+    async def get_agent_metrics(self, request):
+        """GET /api/agents/metrics/:agent_name — get single agent metrics."""
+        try:
+            name = request.match_info['agent_name']
+            metrics = self._agent_metrics_repo.get_by_name(name)
+            if not metrics:
+                return web.json_response({'error': 'Agent not found'}, status=404)
+            return web.json_response(_serialize_json(metrics))
+        except Exception as e:
+            logger.exception('Error in GET /api/agents/metrics/:name')
+            return web.json_response({'error': str(e)}, status=500)
+
+    # ------------------------------------------------------------------
+    # Copy Trading
+    # ------------------------------------------------------------------
+
+    async def list_wallets(self, request):
+        """GET /api/copytrader/wallets — list watched wallets."""
+        try:
+            wallets = self._wallet_repo.get_all()
+            return web.json_response(_serialize_json(list(wallets)))
+        except Exception as e:
+            logger.exception('Error in /api/copytrader/wallets')
+            return web.json_response({'error': str(e)}, status=500)
+
+    async def add_wallet(self, request):
+        """POST /api/copytrader/wallets — add wallet to watch list."""
+        try:
+            data = await request.json()
+            wallet_address = data.get('wallet_address', '').strip()
+            label = data.get('label', wallet_address[:10])
+            weight = float(data.get('weight', 1.0))
+            if not wallet_address:
+                return web.json_response({'error': 'wallet_address required'}, status=400)
+            wallet_id = self._wallet_repo.add(wallet_address, label, weight)
+            return web.json_response({'id': str(wallet_id)}, status=201)
+        except Exception as e:
+            logger.exception('Error in POST /api/copytrader/wallets')
+            return web.json_response({'error': str(e)}, status=500)
+
+    async def remove_wallet(self, request):
+        """DELETE /api/copytrader/wallets/:id — remove wallet from watch list."""
+        try:
+            wallet_id = request.match_info['id']
+            self._wallet_repo.remove(wallet_id)
+            return web.json_response({'success': True})
+        except Exception as e:
+            logger.exception('Error in DELETE /api/copytrader/wallets/:id')
+            return web.json_response({'error': str(e)}, status=500)
+
+    async def trigger_copy_scan(self, request):
+        """POST /api/copytrader/scan — manually trigger copy trade scan."""
+        try:
+            from agents.copy_trader import CopyTraderAgent
+            from data_client import PolymarketDataClient
+            agent = CopyTraderAgent(
+                wallet_repo=self._wallet_repo,
+                data_client=PolymarketDataClient(),
+                portfolio=self.portfolio,
+                agent_runner=self._agent_runner,
+            )
+            loop = asyncio.get_event_loop()
+            count = await agent.scan_wallets()
+            return web.json_response({'trades_placed': count})
+        except Exception as e:
+            logger.exception('Error in POST /api/copytrader/scan')
+            return web.json_response({'error': str(e)}, status=500)
+
+    async def list_pending_copy_trades(self, request):
+        """GET /api/copytrader/pending — list pending copy trades awaiting review."""
+        try:
+            pending = self._pending_copy_repo.get_pending()
+            return web.json_response(_serialize_json(list(pending)))
+        except Exception as e:
+            logger.exception('Error in /api/copytrader/pending')
+            return web.json_response({'error': str(e)}, status=500)
+
+    async def confirm_copy_trade(self, request):
+        """POST /api/copytrader/confirm/:id — confirm a pending copy trade."""
+        try:
+            pending_id = request.match_info['id']
+            # Get pending trade first
+            pending = self._pending_copy_repo.get_pending()
+            trade = next((p for p in pending if str(p['id']) == pending_id), None)
+            if not trade:
+                return web.json_response({'error': 'Pending trade not found'}, status=404)
+
+            # Use record_bet with the AI probability from agent analysis
+            bet = self.portfolio.record_bet(
+                market_id=trade['condition_id'],
+                question=trade['title'],
+                outcome=trade['outcome'],
+                price=float(trade['avg_price']),
+                probability_ai=float(trade['ai_probability']) if trade.get('ai_probability') is not None else 0.5,
+                analysis_summary=f"Copy trade from watched wallet (confirmed) | AI reasoning: {trade.get('ai_reasoning', '')[:200]}",
+                agent_name=trade.get('agent_name') or "CopyTrader",
+            )
+            if not bet:
+                return web.json_response({'error': 'Failed to place bet — market may already have an open bet'}, status=400)
+
+            # Mark as confirmed
+            self._pending_copy_repo.confirm(pending_id)
+            return web.json_response({'success': True, 'bet_id': bet.id})
+        except Exception as e:
+            logger.exception('Error in POST /api/copytrader/confirm/:id')
+            return web.json_response({'error': str(e)}, status=500)
+
+    async def reject_copy_trade(self, request):
+        """POST /api/copytrader/reject/:id — reject a pending copy trade."""
+        try:
+            pending_id = request.match_info['id']
+            self._pending_copy_repo.reject(pending_id)
+            return web.json_response({'success': True})
+        except Exception as e:
+            logger.exception('Error in POST /api/copytrader/reject/:id')
+            return web.json_response({'error': str(e)}, status=500)
+
+    async def confirm_all_copy_trades(self, request):
+        """POST /api/copytrader/confirm-all — confirm all pending copy trades."""
+        try:
+            pending = self._pending_copy_repo.get_pending()
+            confirmed = 0
+            errors = []
+            for trade in pending:
+                bet = self.portfolio.record_bet(
+                    market_id=trade['condition_id'],
+                    question=trade['title'],
+                    outcome=trade['outcome'],
+                    price=float(trade['avg_price']),
+                    probability_ai=float(trade['ai_probability']) if trade.get('ai_probability') is not None else 0.5,
+                    analysis_summary=f"Copy trade from watched wallet (bulk confirm) | AI reasoning: {trade.get('ai_reasoning', '')[:200]}",
+                    agent_name=trade.get('agent_name') or "CopyTrader",
+                )
+                if bet:
+                    self._pending_copy_repo.confirm(str(trade['id']))
+                    confirmed += 1
+                else:
+                    errors.append(f"Market {trade['condition_id']} — already has open bet or stake too small")
+            return web.json_response({'confirmed': confirmed, 'errors': errors})
+        except Exception as e:
+            logger.exception('Error in POST /api/copytrader/confirm-all')
+            return web.json_response({'error': str(e)}, status=500)
+
     # ------------------------------------------------------------------
 
     async def list_skills(self, request):
@@ -438,6 +604,63 @@ class APIHandler:
                 if msg.type == web.WSMsgType.CLOSE:
                     break
         finally:
+            if subscription is not None:
+                self._event_bus.unsubscribe(subscription)
+            await ws.close()
+
+    async def executions_stream_ws(self, request):
+        """GET /api/executions/{id}/stream — WebSocket endpoint streaming steps for one execution."""
+        log_id_str = request.match_info["id"]
+        ws = web.WebSocketResponse()
+        await ws.prepare(request)
+
+        # Send initial connection confirmation
+        await ws.send_json({"type": "connected", "execution_log_id": log_id_str})
+
+        sent_seqs = set()
+        subscription = None
+
+        def on_event(data):
+            if data.type == EXECUTION_STEP:
+                exec_data = data.data if isinstance(data.data, dict) else {}
+                if exec_data.get("execution_log_id") != log_id_str:
+                    return
+                seq = exec_data.get("seq")
+                if seq in sent_seqs:
+                    return
+                sent_seqs.add(seq)
+                asyncio.create_task(ws.send_json({
+                    "type": "step",
+                    "seq": exec_data.get("seq"),
+                    "step_type": exec_data.get("step_type"),
+                    "content": exec_data.get("content"),
+                    "tool_name": exec_data.get("tool_name"),
+                    "tool_input": exec_data.get("tool_input"),
+                    "tool_output": exec_data.get("tool_output"),
+                }))
+
+        if self._event_bus:
+            subscription = self._event_bus.subscribe(on_event)
+
+        # Heartbeat every 15s
+        async def heartbeat():
+            while not ws.closed:
+                try:
+                    await ws.send_json({"type": "ping"})
+                    await asyncio.sleep(15)
+                except Exception:
+                    break
+
+        heartbeat_task = asyncio.create_task(heartbeat())
+
+        try:
+            async for msg in ws:
+                if msg.type == web.WSMsgType.CLOSE:
+                    break
+                elif msg.type == web.WSMsgType.ERROR:
+                    break
+        finally:
+            heartbeat_task.cancel()
             if subscription is not None:
                 self._event_bus.unsubscribe(subscription)
             await ws.close()
@@ -598,9 +821,9 @@ class APIHandler:
             )
 
 
-def create_app(portfolio, scan_controller=None, event_bus=None):
+def create_app(portfolio, scan_controller=None, event_bus=None, agent_runner=None):
     """Create and configure the aiohttp application."""
-    handler = APIHandler(portfolio, scan_controller=scan_controller, event_bus=event_bus)
+    handler = APIHandler(portfolio, scan_controller=scan_controller, event_bus=event_bus, agent_runner=agent_runner)
     app = web.Application(middlewares=[cors_middleware])
 
     # Existing routes
@@ -623,9 +846,10 @@ def create_app(portfolio, scan_controller=None, event_bus=None):
     app.router.add_delete("/api/skills/{id}", handler.delete_skill)
 
     app.router.add_get("/api/executions", handler.list_executions)
-    app.router.add_get("/api/executions/{id}", handler.get_execution)
-    app.router.add_get("/api/executions/{id}/steps", handler.get_execution_steps)
     app.router.add_get("/api/executions/live", handler.executions_live_ws)
+    app.router.add_get("/api/executions/{id}/stream", handler.executions_stream_ws)
+    app.router.add_get("/api/executions/{id}/steps", handler.get_execution_steps)
+    app.router.add_get("/api/executions/{id}", handler.get_execution)
 
     # Audit trail routes
     app.router.add_get("/api/audit/market/{market_id}", handler.get_market_audit)
@@ -638,15 +862,29 @@ def create_app(portfolio, scan_controller=None, event_bus=None):
     app.router.add_post("/api/scan/enable", handler.enable_scan)
     app.router.add_post("/api/scan/disable", handler.disable_scan)
 
+    # Agent metrics routes
+    app.router.add_get("/api/agents/metrics", handler.list_agent_metrics)
+    app.router.add_get("/api/agents/metrics/{agent_name}", handler.get_agent_metrics)
+
+    # Copy trading routes
+    app.router.add_get("/api/copytrader/wallets", handler.list_wallets)
+    app.router.add_post("/api/copytrader/wallets", handler.add_wallet)
+    app.router.add_delete("/api/copytrader/wallets/{id}", handler.remove_wallet)
+    app.router.add_post("/api/copytrader/scan", handler.trigger_copy_scan)
+    app.router.add_get("/api/copytrader/pending", handler.list_pending_copy_trades)
+    app.router.add_post("/api/copytrader/confirm/{id}", handler.confirm_copy_trade)
+    app.router.add_post("/api/copytrader/reject/{id}", handler.reject_copy_trade)
+    app.router.add_post("/api/copytrader/confirm-all", handler.confirm_all_copy_trades)
+
     # Static files (SPA fallback — must be last)
     app.router.add_get("/{path:.*}", handler.static_files)
     return app
 
 
-def start_api_server(portfolio, port=8080, scan_controller=None, event_bus=None):
+def start_api_server(portfolio, port=8080, scan_controller=None, event_bus=None, agent_runner=None):
     """Start the aiohttp server in a background daemon thread."""
     global _api_runner, _api_site
-    app = create_app(portfolio, scan_controller=scan_controller, event_bus=event_bus)
+    app = create_app(portfolio, scan_controller=scan_controller, event_bus=event_bus, agent_runner=agent_runner)
     started_event = threading.Event()
     startup_error = []
 
