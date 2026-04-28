@@ -8,6 +8,7 @@ from decision import DecisionGate
 from filters import build_filter_predicates
 from portfolio import PaperPortfolio
 from reporter import MarketResolver
+from db.cache_repository import CacheRepository
 
 logger = logging.getLogger(__name__)
 
@@ -30,13 +31,46 @@ class Scanner:
         self._ai_agents = ai_agents or []
         self._decision_gate = decision_gate
         self._agent_runner = agent_runner
+        self._cache = CacheRepository()
         
         settings = get_settings()
         self._vol_pred, self._value_pred, self._live_pred = build_filter_predicates(
-            settings.min_volume, settings.max_price, settings.max_odds
+            settings.min_volume, settings.max_price, settings.max_odds, settings.min_odds
         )
         mode = "AGENT RUNTIME" if agent_runner else "LEGACY"
         logger.info(f"Scanner initialized [{mode} MODE]" + (" [PAPER]" if portfolio else ""))
+
+    def _should_analyze(self, market, underdog_price: float, odds: float) -> bool:
+        """Check if market should be analyzed using cache + static heuristics.
+
+        Returns True only if:
+        - Market passes static filters (odds sweet spot, volume)
+        - Market hasn't been analyzed recently with stable price
+        """
+        try:
+            # 1. Odds sweet spot: not too extreme, not too close
+            if odds > 10.0 or odds < 2.0:
+                return False
+
+            # 2. Implied probability range: underdog between 10% and 40%
+            if underdog_price < 0.10 or underdog_price > 0.40:
+                return False
+
+            # 3. Volume threshold
+            if market.volume_24h < 10000:
+                return False
+
+            # 4. Check cache — avoid re-analyzing stable markets
+            if not self._cache.should_analyze(
+                market.id, market.yes_price, market.no_price
+            ):
+                logger.debug(f"Cache hit for {market.id}: skipping {market.question[:50]}")
+                return False
+
+            return True
+
+        except Exception:
+            return False
 
     async def _analyze_market(self, market) -> tuple[float | None, str]:
         """Run all AI agents for a single market concurrently."""
@@ -86,6 +120,16 @@ class Scanner:
         value_bets = self._client.filter_markets(live_filtered, self._value_pred)
         logger.info(f"Found {len(value_bets)} value bet opportunities")
 
+        # Pre-filter: only analyze markets that pass cache + static checks
+        analyzable = []
+        for m in value_bets:
+            underdog = min(m.yes_price, m.no_price)
+            odds = 1.0 / underdog
+            if self._should_analyze(m, underdog, odds):
+                analyzable.append(m)
+        
+        logger.info(f"Pre-filter: {len(analyzable)}/{len(value_bets)} markets worth analyzing")
+
         sent = 0
         
         # Create persistent event loop for all AI analysis
@@ -93,7 +137,7 @@ class Scanner:
             loop = asyncio.new_event_loop()
             asyncio.set_event_loop(loop)
             
-            for market in value_bets:
+            for market in analyzable:
                 underdog_price = (
                     market.yes_price
                     if market.yes_price < market.no_price
@@ -110,6 +154,7 @@ class Scanner:
                 # AI Analysis Layer — Agent Runtime first, fallback to legacy agents
                 ai_probability = None
                 ai_analysis = ""
+                agent_name = "unknown"
 
                 # Try Agent Runtime first
                 if self._agent_runner:
@@ -127,16 +172,18 @@ class Scanner:
                         if result and result.probability is not None:
                             ai_probability = result.probability
                             ai_analysis = result.reasoning or ""
+                            agent_name = getattr(result, 'agent_name', 'AgentRuntime')
                             logger.info(
-                                f"AgentRuntime analysis for {market.question[:50]}: "
-                                f"ai_prob={ai_probability:.2%} | implied={implied_prob:.2%} | odds={odds:.2f}:1"
+                                f"[AgentRuntime] {market.question[:50]}: "
+                                f"agent={agent_name} prob={ai_probability:.2%} | "
+                                f"implied={implied_prob:.2%} | odds={odds:.2f}:1"
                             )
                         elif result and result.error_message:
                             logger.warning(
-                                f"AgentRuntime failed for {market.question[:50]}: {result.error_message}"
+                                f"[AgentRuntime] FAILED {market.question[:50]}: {result.error_message}"
                             )
                     except Exception as e:
-                        logger.error(f"AgentRuntime error for {market.question[:50]}: {e}")
+                        logger.error(f"[AgentRuntime] ERROR {market.question[:50]}: {e}")
 
                 # Fallback to legacy agents if runtime failed or unavailable
                 if ai_probability is None and self._ai_agents:
@@ -145,14 +192,16 @@ class Scanner:
                             self._analyze_market(market)
                         )
                         if ai_probability is not None:
+                            agent_name = "LegacyAgents"
                             logger.info(
-                                f"Legacy AI analysis for {market.question[:50]}: "
-                                f"ai_prob={ai_probability:.2%} | implied={implied_prob:.2%} | odds={odds:.2f}:1"
+                                f"[Legacy] {market.question[:50]}: "
+                                f"prob={ai_probability:.2%} | implied={implied_prob:.2%} | odds={odds:.2f}:1"
                             )
                     except Exception as e:
-                        logger.error(f"Legacy AI analysis failed for {market.question[:50]}: {e}")
+                        logger.error(f"[Legacy] FAILED {market.question[:50]}: {e}")
 
                 # Decision Gate
+                decision = "SKIP"
                 if self._decision_gate and ai_probability is not None:
                     edge = (ai_probability * odds) - 1.0
                     decision = self._decision_gate.evaluate_edge(edge, ai_probability, implied_prob)
@@ -160,13 +209,27 @@ class Scanner:
                         f"Decision for {market.question[:50]}: {decision} "
                         f"(edge={edge:+.1%}, ai={ai_probability:.1%}, market={implied_prob:.1%})"
                     )
+
+                    # Cache the result
+                    self._cache.set_cache(
+                        market_id=market.id,
+                        question=market.question,
+                        yes_price=market.yes_price,
+                        no_price=market.no_price,
+                        probability=ai_probability,
+                        confidence=None,
+                        reasoning=ai_analysis,
+                        agent_name=agent_name,
+                        decision=decision,
+                    )
+
                     if decision == "REJECT":
                         logger.info(f"Skipping {market.question[:50]} — no value edge")
                         continue
 
                 # Paper trading: record bet
                 bet = None
-                if self._portfolio:
+                if self._portfolio and decision == "ACCEPT":
                     bet = self._portfolio.record_bet(
                         market_id=market.id,
                         question=market.question,
@@ -181,7 +244,7 @@ class Scanner:
                             probability_ai=ai_probability,
                             analysis_summary=ai_analysis
                         ) else 0
-                else:
+                elif not self._portfolio:
                     sent += 1 if self._sender.send(market) else 0
         finally:
             # Clean up: close all agent clients and the loop

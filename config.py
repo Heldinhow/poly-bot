@@ -14,10 +14,11 @@ class Settings(BaseSettings):
     telegram_chat_id: str
 
     # Scan settings
-    scan_interval_secs: int = 300
-    min_volume: float = 10000.0
-    max_price: float = 0.35
-    max_odds: float = 20.0
+    scan_interval_secs: int = 300  # 5 minutes (was 60)
+    min_volume: float = 20000.0  # was 10000
+    max_price: float = 0.25  # was 0.35
+    max_odds: float = 10.0  # was 20.0
+    min_odds: float = 2.0  # NEW: minimum odds
 
     # Trading
     paper_mode: bool = True  # Deprecated: use trading_mode

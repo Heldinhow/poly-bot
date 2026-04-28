@@ -84,7 +84,7 @@ def active_volume_predicate(min_volume: float) -> Callable[[Market], bool]:
     return predicate
 
 
-def value_bet_underdog_predicate(max_price: float, max_odds: float = 20.0) -> Callable[[Market], bool]:
+def value_bet_underdog_predicate(max_price: float, max_odds: float = 10.0, min_odds: float = 2.0) -> Callable[[Market], bool]:
     def predicate(market: Market) -> bool:
         try:
             yes_price = market.yes_price
@@ -120,6 +120,9 @@ def value_bet_underdog_predicate(max_price: float, max_odds: float = 20.0) -> Ca
             if odds > max_odds:
                 return False
 
+            if odds < min_odds:
+                return False
+
             gap = favorite_price - underdog_price
             if gap < 0.05:
                 return False
@@ -131,7 +134,7 @@ def value_bet_underdog_predicate(max_price: float, max_odds: float = 20.0) -> Ca
     return predicate
 
 
-def build_filter_predicates(min_volume: float, max_price: float, max_odds: float):
+def build_filter_predicates(min_volume: float, max_price: float, max_odds: float, min_odds: float = 2.0):
     vol_pred = active_volume_predicate(min_volume)
-    value_pred = value_bet_underdog_predicate(max_price, max_odds)
+    value_pred = value_bet_underdog_predicate(max_price, max_odds, min_odds)
     return vol_pred, value_pred, is_live_friendly_predicate

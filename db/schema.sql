@@ -66,6 +66,26 @@ BEGIN
 END$$;
 
 -- ============================================================
+-- Market Analysis Cache (avoid re-analyzing same markets)
+-- ============================================================
+
+CREATE TABLE IF NOT EXISTS market_analysis_cache (
+    market_id           TEXT PRIMARY KEY,
+    question            TEXT NOT NULL,
+    yes_price_at_analysis DECIMAL(10, 4) NOT NULL,
+    no_price_at_analysis  DECIMAL(10, 4) NOT NULL,
+    probability         DECIMAL(5, 4),
+    confidence          DECIMAL(5, 4),
+    reasoning           TEXT,
+    agent_name          TEXT,
+    decision            TEXT,  -- ACCEPT | REJECT | SKIP
+    analyzed_at         TIMESTAMPTZ DEFAULT NOW()
+);
+
+CREATE INDEX IF NOT EXISTS idx_cache_analyzed_at ON market_analysis_cache(analyzed_at);
+CREATE INDEX IF NOT EXISTS idx_cache_decision ON market_analysis_cache(decision);
+
+-- ============================================================
 -- Agent Runtime Tables
 -- ============================================================
 

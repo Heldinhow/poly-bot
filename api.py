@@ -6,6 +6,7 @@ import threading
 from concurrent.futures import ThreadPoolExecutor
 import datetime as dt
 from datetime import datetime, timedelta
+from decimal import Decimal
 from uuid import UUID
 
 from aiohttp import web
@@ -18,7 +19,7 @@ _JSON_CTRL_RE = re.compile(r"[\x00-\x08\x0b\x0c\x0e-\x1f]")
 
 
 def _serialize_json(data):
-    """Recursively serialize datetime, date, UUID, and sanitize strings for JSON."""
+    """Recursively serialize datetime, date, UUID, Decimal, and sanitize strings for JSON."""
     if isinstance(data, dict):
         return {k: _serialize_json(v) for k, v in data.items()}
     if isinstance(data, list):
@@ -29,6 +30,8 @@ def _serialize_json(data):
         return data.isoformat()
     if isinstance(data, UUID):
         return str(data)
+    if isinstance(data, Decimal):
+        return float(data)
     if isinstance(data, str):
         return _JSON_CTRL_RE.sub("", data)
     return data

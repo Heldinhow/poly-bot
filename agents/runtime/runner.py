@@ -1,6 +1,7 @@
 """Agent runner — orchestrates the full task execution pipeline."""
 import asyncio
 import logging
+import time
 import uuid
 from typing import Any
 
@@ -55,6 +56,8 @@ class AgentRunner:
 
         Returns the agent's Result, or None if no agent/runtime available.
         """
+        start_time = time.time()
+
         # 1. Select agent(s)
         agents = self._registry.select_agents_for_market(question)
         if not agents:
@@ -64,11 +67,18 @@ class AgentRunner:
         # For MVP, use the first matched agent (no ensemble yet)
         agent = agents[0]
         agent_id = agent["id"]
+        agent_name = agent.get("name", "unknown")
         agent_runtime = agent["runtime"]
         agent_config = self._registry.get_agent_with_skills(agent_id)
         if not agent_config:
             logger.warning(f"Could not load agent config for {agent_id}")
             return None
+
+        # Log agent selection
+        logger.info(
+            f"[AgentRunner] Selected agent: {agent_name} (runtime={agent_runtime}, "
+            f"model={agent_config.get('model', 'default')})"
+        )
 
         # 2. Check circuit breaker
         if not self._circuit_breakers.can_execute(agent_runtime):
@@ -125,12 +135,16 @@ class AgentRunner:
         )
         prompt = build_task_prompt(task, agent_config)
 
+        # Log prompt preview
+        prompt_preview = prompt[:200] + "..." if len(prompt) > 200 else prompt
+        logger.info(f"[AgentRunner] Prompt ({len(prompt)} chars): {prompt_preview}")
+
         # 8. Execute via runtime manager
         opts = ExecOptions(
             cwd=workdir,
             model=agent_config.get("model", ""),
             system_prompt=agent_config.get("system_prompt", ""),
-            timeout=__import__("datetime").timedelta(minutes=20),
+            timeout=__import__("datetime").timedelta(minutes=5),  # Reduced from 20
             max_retries=agent_config.get("max_retries", 1),
             custom_args=agent_config.get("custom_args", []),
             custom_env=agent_config.get("custom_env", {}),
@@ -144,15 +158,33 @@ class AgentRunner:
                 agent_runtime=agent_runtime,
             )
 
-            # 9. Track execution steps
-            # Note: execute_task returns Result directly. For streaming tracking,
-            # we would need to refactor to return Session. For now, we track
-            # the final result only.
+            # Calculate duration
+            duration_ms = int((time.time() - start_time) * 1000)
 
-            # 10. Finalize
+            # Enrich result with metadata
+            result.agent_name = agent_name
+            result.runtime = agent_runtime
+            result.duration_ms = duration_ms
+            result.prompt_used = prompt
+
+            # Log result
+            if result.probability is not None:
+                logger.info(
+                    f"[AgentRunner] Result: agent={agent_name} "
+                    f"prob={result.probability:.2%} conf={result.confidence:.2%} "
+                    f"tokens={result.input_tokens}+{result.output_tokens} "
+                    f"duration={duration_ms}ms"
+                )
+            else:
+                logger.warning(
+                    f"[AgentRunner] No result: agent={agent_name} "
+                    f"error={result.error_message} duration={duration_ms}ms"
+                )
+
+            # 9. Finalize
             self._tracker.finalize(log_id, result)
 
-            # 11. Record circuit breaker
+            # 10. Record circuit breaker
             if result.error_message:
                 self._circuit_breakers.record_failure(agent_runtime)
             else:
@@ -161,8 +193,15 @@ class AgentRunner:
             return result
 
         except Exception as e:
-            logger.error(f"Agent execution failed: {e}")
-            error_result = Result(error_message=str(e))
+            duration_ms = int((time.time() - start_time) * 1000)
+            logger.error(f"[AgentRunner] Exception: agent={agent_name} error={e} duration={duration_ms}ms")
+            error_result = Result(
+                error_message=str(e),
+                agent_name=agent_name,
+                runtime=agent_runtime,
+                duration_ms=duration_ms,
+                prompt_used=prompt,
+            )
             self._tracker.finalize(log_id, error_result)
             self._circuit_breakers.record_failure(agent_runtime)
             return error_result

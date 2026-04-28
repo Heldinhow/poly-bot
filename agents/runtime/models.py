@@ -34,6 +34,10 @@ class Result:
     error_message: str = ""
     input_tokens: int = 0
     output_tokens: int = 0
+    agent_name: str = ""
+    runtime: str = ""
+    duration_ms: int = 0
+    prompt_used: str = ""
 
 
 @dataclass

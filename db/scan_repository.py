@@ -18,7 +18,7 @@ class ScanRepository:
                     # Seed the row if missing
                     cur.execute("INSERT INTO scan_settings (id, enabled) VALUES (1, true)")
                     return True
-                return row[0]
+                return row["enabled"]
         except Exception:
             logger.exception("Error reading scan_settings, defaulting to enabled")
             return True

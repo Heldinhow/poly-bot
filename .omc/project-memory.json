@@ -1,0 +1,210 @@
+{
+  "version": "1.0.0",
+  "lastScanned": 1777393105728,
+  "projectRoot": "/Users/helder/polymarket/polymarket-merge",
+  "techStack": {
+    "languages": [
+      {
+        "name": "Python",
+        "version": null,
+        "confidence": "high",
+        "markers": [
+          "requirements.txt"
+        ]
+      }
+    ],
+    "frameworks": [],
+    "packageManager": "pip",
+    "runtime": null
+  },
+  "build": {
+    "buildCommand": null,
+    "testCommand": null,
+    "lintCommand": null,
+    "devCommand": null,
+    "scripts": {}
+  },
+  "conventions": {
+    "namingStyle": null,
+    "importStyle": null,
+    "testPattern": null,
+    "fileOrganization": null
+  },
+  "structure": {
+    "isMonorepo": false,
+    "workspaces": [],
+    "mainDirectories": [
+      "docs",
+      "scripts"
+    ],
+    "gitBranches": {
+      "defaultBranch": "main",
+      "branchingStrategy": null
+    }
+  },
+  "customNotes": [],
+  "directoryMap": {
+    "__pycache__": {
+      "path": "__pycache__",
+      "purpose": null,
+      "fileCount": 13,
+      "lastAccessed": 1777393105708,
+      "keyFiles": [
+        "alerts.cpython-314.pyc",
+        "api.cpython-314.pyc",
+        "client.cpython-314.pyc",
+        "config.cpython-314.pyc",
+        "dashboard.cpython-314.pyc"
+      ]
+    },
+    "agents": {
+      "path": "agents",
+      "purpose": null,
+      "fileCount": 9,
+      "lastAccessed": 1777393105709,
+      "keyFiles": [
+        "__init__.py",
+        "base.py",
+        "circuit_breaker.py",
+        "classifier.py",
+        "esports_analyst.py"
+      ]
+    },
+    "dashboard": {
+      "path": "dashboard",
+      "purpose": null,
+      "fileCount": 2,
+      "lastAccessed": 1777393105709,
+      "keyFiles": [
+        "index.html",
+        "state.json"
+      ]
+    },
+    "db": {
+      "path": "db",
+      "purpose": null,
+      "fileCount": 9,
+      "lastAccessed": 1777393105709,
+      "keyFiles": [
+        "__init__.py",
+        "agent_repository.py",
+        "agent_skill_repository.py",
+        "connection.py",
+        "execution_repository.py"
+      ]
+    },
+    "docs": {
+      "path": "docs",
+      "purpose": "Documentation",
+      "fileCount": 9,
+      "lastAccessed": 1777393105710,
+      "keyFiles": [
+        "apis.md",
+        "architecture.md",
+        "changelog.md",
+        "conventions.md",
+        "domain.md"
+      ]
+    },
+    "frontend": {
+      "path": "frontend",
+      "purpose": null,
+      "fileCount": 9,
+      "lastAccessed": 1777393105710,
+      "keyFiles": [
+        "index.html",
+        "package-lock.json",
+        "package.json",
+        "tailwind.config.ts",
+        "tsconfig.app.json"
+      ]
+    },
+    "models": {
+      "path": "models",
+      "purpose": "Data models",
+      "fileCount": 2,
+      "lastAccessed": 1777393105710,
+      "keyFiles": [
+        "__init__.py",
+        "bet.py"
+      ]
+    },
+    "scripts": {
+      "path": "scripts",
+      "purpose": "Build/utility scripts",
+      "fileCount": 3,
+      "lastAccessed": 1777393105710,
+      "keyFiles": [
+        "migrate_csv.py",
+        "seed_skills.py",
+        "wait-for-postgres.sh"
+      ]
+    },
+    "trading": {
+      "path": "trading",
+      "purpose": null,
+      "fileCount": 2,
+      "lastAccessed": 1777393105711,
+      "keyFiles": [
+        "__init__.py",
+        "mode_gate.py"
+      ]
+    },
+    "venv": {
+      "path": "venv",
+      "purpose": null,
+      "fileCount": 3,
+      "lastAccessed": 1777393105711,
+      "keyFiles": [
+        "pyvenv.cfg"
+      ]
+    },
+    "frontend/dist": {
+      "path": "frontend/dist",
+      "purpose": "Distribution/build output",
+      "fileCount": 1,
+      "lastAccessed": 1777393105712,
+      "keyFiles": [
+        "index.html"
+      ]
+    },
+    "frontend/node_modules": {
+      "path": "frontend/node_modules",
+      "purpose": "Dependencies",
+      "fileCount": 1,
+      "lastAccessed": 1777393105712,
+      "keyFiles": []
+    },
+    "frontend/src": {
+      "path": "frontend/src",
+      "purpose": "Source code",
+      "fileCount": 3,
+      "lastAccessed": 1777393105712,
+      "keyFiles": [
+        "App.tsx",
+        "main.tsx",
+        "vite-env.d.ts"
+      ]
+    },
+    "venv/bin": {
+      "path": "venv/bin",
+      "purpose": "Executable scripts",
+      "fileCount": 9,
+      "lastAccessed": 1777393105713,
+      "keyFiles": [
+        "Activate.ps1",
+        "activate",
+        "activate.csh"
+      ]
+    },
+    "venv/lib": {
+      "path": "venv/lib",
+      "purpose": "Library code",
+      "fileCount": 0,
+      "lastAccessed": 1777393105713,
+      "keyFiles": []
+    }
+  },
+  "hotPaths": [],
+  "userDirectives": []
+}

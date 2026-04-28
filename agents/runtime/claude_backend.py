@@ -1,6 +1,7 @@
 """Claude Code backend — spawns `claude` CLI with stream-json output."""
 import json
 import logging
+import re
 
 from agents.runtime.generic_backend import GenericBackend
 from agents.runtime.models import Message, MessageType, Result
@@ -47,7 +48,7 @@ class ClaudeBackend(GenericBackend):
             runtime_name="claude",
             cli_command="claude",
             parser=_parse_claude_stream_json,
-            default_args=["-p", "--output-format", "stream-json"],
+            default_args=["-p", "--output-format", "stream-json", "--verbose"],
         )
 
     def _build_command(self, prompt: str, opts) -> list[str]:
@@ -60,10 +61,12 @@ class ClaudeBackend(GenericBackend):
         return cmd
 
     def _extract_result(self, raw_output: str, returncode: int) -> Result:
-        """Extract Result from Claude Code output.
-        
-        Claude's stream-json output may have the final JSON result as the last
-        'text' message, or as a standalone JSON block.
+        """Extract Result from Claude Code stream-json output.
+
+        Claude's stream-json format:
+        - Lines are JSON objects with "type" field
+        - The final result is in a line with type="result" and "result" field
+        - The result text may contain markdown code blocks with JSON
         """
         if returncode != 0:
             return Result(
@@ -71,40 +74,95 @@ class ClaudeBackend(GenericBackend):
                 raw_output=raw_output,
             )
 
-        # Try to find the final JSON result in stream-json text messages
         lines = raw_output.strip().splitlines()
+
+        # Strategy 1: Find type="result" line and extract "result" field
         for line in reversed(lines):
             line = line.strip()
             if not line:
                 continue
             try:
                 data = json.loads(line)
-                # If it's a stream-json wrapper, unwrap the content
-                if isinstance(data, dict) and "content" in data:
-                    content = data["content"]
-                    if isinstance(content, str):
-                        content = content.strip()
-                        if content.startswith("{") and content.endswith("}"):
-                            data = json.loads(content)
-                        else:
-                            continue
-                    elif isinstance(content, dict):
-                        data = content
-                    else:
-                        continue
+                if isinstance(data, dict) and data.get("type") == "result":
+                    result_text = data.get("result", "")
+                    parsed = self._parse_json_from_text(result_text)
+                    if parsed and ("probability" in parsed or "confidence" in parsed):
+                        usage = data.get("usage", {})
+                        return Result(
+                            probability=parsed.get("probability"),
+                            confidence=parsed.get("confidence"),
+                            reasoning=parsed.get("reasoning", ""),
+                            sources=parsed.get("sources", []),
+                            raw_output=raw_output,
+                            input_tokens=usage.get("input_tokens", 0),
+                            output_tokens=usage.get("output_tokens", 0),
+                        )
+            except json.JSONDecodeError:
+                continue
 
-                if "probability" in data or "confidence" in data:
-                    return Result(
-                        probability=data.get("probability"),
-                        confidence=data.get("confidence"),
-                        reasoning=data.get("reasoning", ""),
-                        sources=data.get("sources", []),
-                        raw_output=raw_output,
-                        input_tokens=data.get("input_tokens", 0),
-                        output_tokens=data.get("output_tokens", 0),
-                    )
+        # Strategy 2: Find any line with probability/confidence in text content
+        for line in reversed(lines):
+            line = line.strip()
+            if not line:
+                continue
+            try:
+                data = json.loads(line)
+                # Check assistant message with text content
+                if isinstance(data, dict) and data.get("type") == "assistant":
+                    message = data.get("message", {})
+                    content_list = message.get("content", [])
+                    for item in content_list:
+                        if isinstance(item, dict) and item.get("type") == "text":
+                            text = item.get("text", "")
+                            parsed = self._parse_json_from_text(text)
+                            if parsed and ("probability" in parsed or "confidence" in parsed):
+                                usage = message.get("usage", {})
+                                return Result(
+                                    probability=parsed.get("probability"),
+                                    confidence=parsed.get("confidence"),
+                                    reasoning=parsed.get("reasoning", ""),
+                                    sources=parsed.get("sources", []),
+                                    raw_output=raw_output,
+                                    input_tokens=usage.get("input_tokens", 0),
+                                    output_tokens=usage.get("output_tokens", 0),
+                                )
             except json.JSONDecodeError:
                 continue
 
         # Fallback: plain JSON in output
         return super()._extract_result(raw_output, returncode)
+
+    def _parse_json_from_text(self, text: str) -> dict | None:
+        """Extract JSON from text that may contain markdown code blocks."""
+        if not text:
+            return None
+
+        # Try parsing the whole text as JSON
+        text = text.strip()
+        if text.startswith("{") and text.endswith("}"):
+            try:
+                return json.loads(text)
+            except json.JSONDecodeError:
+                pass
+
+        # Try extracting from markdown code blocks: ```json ... ``` or ``` ... ```
+        code_block_pattern = r"```(?:json)?\s*\n?(.*?)\n?\s*```"
+        matches = re.findall(code_block_pattern, text, re.DOTALL)
+        for match in matches:
+            match = match.strip()
+            if match.startswith("{") and match.endswith("}"):
+                try:
+                    return json.loads(match)
+                except json.JSONDecodeError:
+                    continue
+
+        # Try finding JSON object in text (greedy)
+        json_pattern = r"\{[^{}]*\"probability\"[^{}]*\}"
+        matches = re.findall(json_pattern, text, re.DOTALL)
+        for match in matches:
+            try:
+                return json.loads(match)
+            except json.JSONDecodeError:
+                continue
+
+        return None
