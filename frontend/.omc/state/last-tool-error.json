@@ -1,0 +1,7 @@
+{
+  "tool_name": "Bash",
+  "tool_input_preview": "{\"command\":\"npm ls react-router-dom 2>&1\",\"description\":\"Check if react-router-dom is installed\"}",
+  "error": "Exit code 1\natlas-dashboard@0.0.1 /Users/helder/polymarket/polymarket-merge/frontend\n└── (empty)",
+  "timestamp": "2026-04-28T19:24:31.992Z",
+  "retry_count": 1
+}

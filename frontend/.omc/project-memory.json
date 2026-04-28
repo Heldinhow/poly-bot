@@ -1,0 +1,157 @@
+{
+  "version": "1.0.0",
+  "lastScanned": 1777401922035,
+  "projectRoot": "/Users/helder/polymarket/polymarket-merge/frontend",
+  "techStack": {
+    "languages": [
+      {
+        "name": "JavaScript/TypeScript",
+        "version": null,
+        "confidence": "high",
+        "markers": [
+          "package.json"
+        ]
+      },
+      {
+        "name": "TypeScript",
+        "version": null,
+        "confidence": "high",
+        "markers": [
+          "tsconfig.json"
+        ]
+      }
+    ],
+    "frameworks": [
+      {
+        "name": "react",
+        "version": "19.0",
+        "category": "frontend"
+      },
+      {
+        "name": "react-dom",
+        "version": "19.0",
+        "category": "frontend"
+      },
+      {
+        "name": "vite",
+        "version": "6.0",
+        "category": "build"
+      }
+    ],
+    "packageManager": "npm",
+    "runtime": null
+  },
+  "build": {
+    "buildCommand": "npm run build",
+    "testCommand": null,
+    "lintCommand": null,
+    "devCommand": "npm run dev",
+    "scripts": {
+      "dev": "vite",
+      "build": "tsc && vite build",
+      "preview": "vite preview"
+    }
+  },
+  "conventions": {
+    "namingStyle": null,
+    "importStyle": null,
+    "testPattern": null,
+    "fileOrganization": "type-based"
+  },
+  "structure": {
+    "isMonorepo": false,
+    "workspaces": [],
+    "mainDirectories": [
+      "src"
+    ],
+    "gitBranches": {
+      "defaultBranch": "main",
+      "branchingStrategy": null
+    }
+  },
+  "customNotes": [],
+  "directoryMap": {
+    "dist": {
+      "path": "dist",
+      "purpose": "Distribution/build output",
+      "fileCount": 1,
+      "lastAccessed": 1777401921977,
+      "keyFiles": [
+        "index.html"
+      ]
+    },
+    "src": {
+      "path": "src",
+      "purpose": "Source code",
+      "fileCount": 3,
+      "lastAccessed": 1777401921983,
+      "keyFiles": [
+        "App.tsx",
+        "main.tsx",
+        "vite-env.d.ts"
+      ]
+    },
+    "dist/assets": {
+      "path": "dist/assets",
+      "purpose": "Static assets",
+      "fileCount": 2,
+      "lastAccessed": 1777401921991,
+      "keyFiles": [
+        "index-3el-I5UC.css",
+        "index-ItyTP_4F.js"
+      ]
+    },
+    "src/components": {
+      "path": "src/components",
+      "purpose": "UI components",
+      "fileCount": 10,
+      "lastAccessed": 1777401921996,
+      "keyFiles": [
+        "AgentHierarchy.tsx",
+        "DashboardHeader.tsx",
+        "ExportActions.tsx"
+      ]
+    },
+    "src/lib": {
+      "path": "src/lib",
+      "purpose": "Library code",
+      "fileCount": 1,
+      "lastAccessed": 1777401921997,
+      "keyFiles": [
+        "api.ts"
+      ]
+    },
+    "src/pages": {
+      "path": "src/pages",
+      "purpose": "Page components",
+      "fileCount": 3,
+      "lastAccessed": 1777401921997,
+      "keyFiles": [
+        "AgentsPage.tsx",
+        "ExecutionsPage.tsx",
+        "SkillsPage.tsx"
+      ]
+    }
+  },
+  "hotPaths": [
+    {
+      "path": "src/components/AuditFilterBar.tsx",
+      "accessCount": 2,
+      "lastAccessed": 1777404375142,
+      "type": "file"
+    },
+    {
+      "path": "src/pages/AuditPage.tsx",
+      "accessCount": 2,
+      "lastAccessed": 1777404375697,
+      "type": "file"
+    },
+    {
+      "path": "src/App.tsx",
+      "accessCount": 2,
+      "lastAccessed": 1777404412523,
+      "type": "file"
+    }
+  ],
+  "userDirectives": []
+}

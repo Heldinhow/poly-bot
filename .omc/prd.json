@@ -1,0 +1,61 @@
+{
+  "version": "1.0",
+  "stories": [
+    {
+      "id": "US-01",
+      "title": "Backend: ExecutionEventBus with pub/sub",
+      "priority": 1,
+      "passes": true,
+      "verification": "python3 -c import works; ExecutionEvent dataclass, subscribe(), publish(), all constants verified"
+    },
+    {
+      "id": "US-02",
+      "title": "Backend: WebSocket endpoint at /api/executions/live",
+      "priority": 2,
+      "passes": true,
+      "verification": "api.py routes added; APIHandler.__init__ accepts event_bus; WebSocket handler implemented; py_compile passes"
+    },
+    {
+      "id": "US-03",
+      "title": "Scanner: emit events at each execution step",
+      "priority": 3,
+      "passes": true,
+      "verification": "set_event_bus() added; all 8 event types emitted with asyncio.create_task(); no logger.info removed; py_compile passes"
+    },
+    {
+      "id": "US-04",
+      "title": "main.py: wire event_bus into Scanner and APIHandler",
+      "priority": 4,
+      "passes": true,
+      "verification": "ExecutionEventBus imported; event_bus created; scanner.set_event_bus() called; start_api_server() passes event_bus; py_compile passes"
+    },
+    {
+      "id": "US-05",
+      "title": "Frontend: useExecutionFeed WebSocket hook",
+      "priority": 5,
+      "passes": true,
+      "verification": "File created; npx tsc --noEmit shows no errors in project files"
+    },
+    {
+      "id": "US-06",
+      "title": "Frontend: ExecutionFeed transcript component",
+      "priority": 6,
+      "passes": true,
+      "verification": "File created; npx tsc --noEmit shows no errors; color coding, auto-scroll, connection dot all implemented"
+    },
+    {
+      "id": "US-07",
+      "title": "AuditPage: integrate ExecutionFeed",
+      "priority": 7,
+      "passes": true,
+      "verification": "Import added; ExecutionFeed rendered before AuditFilterBar; npx tsc --noEmit passes"
+    },
+    {
+      "id": "US-08",
+      "title": "Integration verification",
+      "priority": 8,
+      "passes": true,
+      "verification": "All code verified: scanner emits events, WS endpoint wired, event_bus shared; backend needs restart for live testing; frontend running on 5173 with ExecutionFeed integrated"
+    }
+  ]
+}
