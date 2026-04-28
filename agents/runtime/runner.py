@@ -32,10 +32,11 @@ class AgentRunner:
         tracker: ExecutionTracker | None = None,
         exec_env: ExecutionEnvironment | None = None,
         circuit_breakers: CircuitBreakerRegistry | None = None,
+        event_bus=None,
     ):
         self._registry = registry or AgentRegistry()
         self._runtime = runtime_manager or RuntimeManager()
-        self._tracker = tracker or ExecutionTracker()
+        self._tracker = tracker or ExecutionTracker(event_bus=event_bus)
         self._exec_env = exec_env or ExecutionEnvironment()
         self._circuit_breakers = circuit_breakers or CircuitBreakerRegistry()
 
