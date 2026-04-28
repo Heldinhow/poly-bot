@@ -29,6 +29,7 @@ BET_ALERT_SENT = "bet.alert_sent"
 PORTFOLIO_RESOLVED = "portfolio.resolved"
 SCAN_COMPLETED = "scan.completed"
 SCAN_ERROR = "scan.error"
+EXECUTION_STEP = "execution.step"
 
 class ExecutionEventBus:
     def __init__(self):
