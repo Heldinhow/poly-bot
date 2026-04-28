@@ -13,9 +13,8 @@ env/
 ENV/
 .venv
 
-# Frontend
+# Frontend (keep dist/ - it's served by the app)
 frontend/node_modules/
-frontend/dist/
 frontend/.gitignore
 
 # IDE
