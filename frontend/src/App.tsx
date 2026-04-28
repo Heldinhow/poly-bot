@@ -19,6 +19,11 @@ function App() {
           <KpiRow />
         </section>
 
+        {/* Section: Performance Chart */}
+        <section className="mb-4 animate-fade-up" style={{ animationDelay: '0.1s' }}>
+          <PerformanceChart />
+        </section>
+
         {/* Section: PRISM + JANUS Row */}
         <section className="mb-4 grid grid-cols-1 gap-4 lg:grid-cols-2">
           <div className="animate-fade-up" style={{ animationDelay: '0.15s' }}>
@@ -32,11 +37,6 @@ function App() {
         {/* Section: Agent Hierarchy */}
         <section className="mb-4 animate-fade-up" style={{ animationDelay: '0.25s' }}>
           <AgentHierarchy />
-        </section>
-
-        {/* Section: Performance Chart */}
-        <section className="mb-4 animate-fade-up" style={{ animationDelay: '0.3s' }}>
-          <PerformanceChart />
         </section>
 
         {/* Section: Open Bets */}
