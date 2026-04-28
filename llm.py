@@ -23,7 +23,11 @@ class MinimaxClient:
         if self._client is None:
             self._client = httpx.AsyncClient(
                 base_url=self.base_url,
-                headers={"x-api-key": self.api_key},
+                headers={
+                    "Authorization": f"Bearer {self.api_key}",
+                    "anthropic-version": "2023-06-01",
+                    "Content-Type": "application/json",
+                },
                 timeout=60.0,
             )
         return self._client
