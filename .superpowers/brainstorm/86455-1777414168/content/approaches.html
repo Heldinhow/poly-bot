@@ -1,0 +1,40 @@
+<h2>Onde colocar o tracking live do agent?</h2>
+<p class="subtitle">3 abordagens para integrar o acompanhamento em tempo real</p>
+
+<div class="options">
+  <div class="option" data-choice="a" onclick="toggleSelect(this)">
+    <div class="letter">A</div>
+    <div class="content">
+      <h3>Nova aba "Monitor"</h3>
+      <p>Aba dedicada com card de execução live + output final. Similar ao AgentLiveCard do multica. ExecutionsPage e AuditPage continuam como estão.</p>
+      <div class="pros-cons">
+        <div class="pros"><h4>Pros</h4><ul><li>Separação clara de responsabilidades</li><li>UI focada sem distrações</li><li>Não mexe no que já funciona</li></ul></div>
+        <div class="cons"><h4>Cons</h4><ul><li>Mais uma aba no menu</li><li>Nova rota/tab para manter</li></ul></div>
+      </div>
+    </div>
+  </div>
+
+  <div class="option" data-choice="b" onclick="toggleSelect(this)">
+    <div class="letter">B</div>
+    <div class="content">
+      <h3>Enriquecer a AuditPage</h3>
+      <p>Adicionar o card de execução live no topo da AuditPage (onde já existe o ExecutionFeed) + output final. Um único lugar com live tracking + audit trail.</p>
+      <div class="pros-cons">
+        <div class="pros"><h4>Pros</h4><ul><li>Tudo num lugar só</li><li>Reaproveita WebSocket existente</li><li>Já tem contexto de mercado</li></ul></div>
+        <div class="cons"><h4>Cons</h4><ul><li>AuditPage pode ficar poluída</li><li>Mistura live com histórico</li></ul></div>
+      </div>
+    </div>
+  </div>
+
+  <div class="option" data-choice="c" onclick="toggleSelect(this)">
+    <div class="letter">C</div>
+    <div class="content">
+      <h3>Substituir ExecutionCard por live card</h3>
+      <p>Na ExecutionsPage, trocar os ExecutionCards estáticos por cards live que mostram os steps em tempo real + expandem para output final.</p>
+      <div class="pros-cons">
+        <div class="pros"><h4>Pros</h4><ul><li>Menos mudanças estruturais</li><li>Substitui o que já existe</li><li>Lista de execuções com live tracking</li></ul></div>
+        <div class="cons"><h4>Cons</h4><ul><li>ExecutionsPage já é uma lista densa</li><li>Cards live numa lista podem competir por atenção</li></ul></div>
+      </div>
+    </div>
+  </div>
+</div>

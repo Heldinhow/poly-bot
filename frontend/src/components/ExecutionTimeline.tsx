@@ -1,5 +1,5 @@
 import { useState, useRef, useEffect, useCallback } from 'react';
-import { ChevronDown, ChevronUp, Wrench, AlertCircle, ArrowDown } from 'lucide-react';
+import { ChevronDown, ChevronUp, Wrench, ArrowDown } from 'lucide-react';
 import type { ExecutionStep } from '@/hooks/useExecutions';
 
 const stepBadgeColors: Record<string, string> = {
@@ -8,12 +8,6 @@ const stepBadgeColors: Record<string, string> = {
   tool_use: 'bg-blue-500/20 text-blue-400',
   tool_result: 'bg-slate-500/20 text-slate-400',
   error: 'bg-red-500/20 text-red-400',
-};
-
-const stepIcons: Record<string, React.ReactNode> = {
-  thinking: <svg className="h-3 w-3" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M12 2a8 8 0 0 1 8 8c0 3-2 5-4 7l-1 1-1-1c-2-2-4-4-4-7a8 8 0 0 1 2-6z"/><path d="M12 18v4"/></svg>,
-  tool_use: <Wrench className="h-3 w-3" />,
-  error: <AlertCircle className="h-3 w-3" />,
 };
 
 function StepRow({ step }: { step: ExecutionStep }) {
@@ -40,7 +34,7 @@ function StepRow({ step }: { step: ExecutionStep }) {
           #{step.seq}
         </span>
         <span className={`shrink-0 rounded px-1.5 py-0.5 text-[10px] font-medium ${stepBadgeColors[type] || 'bg-text-muted/20 text-text-muted'}`}>
-          {stepIcons[type] && <span className="mr-1 inline-block align-middle">{stepIcons[type]}</span>}
+          {type === 'tool_use' && <Wrench className="h-3 w-3 inline mr-1" />}
           {type === 'tool_use' ? step.tool_name || 'tool' : type === 'tool_result' ? 'result' : type}
         </span>
         <span className={`min-w-0 flex-1 text-xs truncate ${

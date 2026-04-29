@@ -1,0 +1,134 @@
+<h2>Arquitetura Técnica</h2>
+<p class="subtitle">O que precisa mudar no backend e frontend</p>
+
+<div class="section">
+  <h3>1. Backend: Nova rota WebSocket para steps</h3>
+  <p>Endpoint <code>GET /api/executions/{execution_log_id}/stream</code> que transmite cada step do agent em tempo real.</p>
+  <div class="mockup">
+    <div class="mockup-body" style="padding:16px;font-family:monospace;font-size:12px;line-height:1.6">
+<pre style="color:#cbd5e1;margin:0">EventBus ──publish──▶ /api/executions/{id}/stream ──WS──▶ Frontend
+    │
+    │  ExecutionTracker.feed_step()
+    │  ├── Persiste no DB (execution_steps)
+    │  └── Publica no EventBus (para WS broadcast)
+    │
+Agent Backend (claude/opencode/etc)
+    │
+    └── yield Message(type, content, tool, ...)
+         ├── thinking  → step_type="thinking"
+         ├── tool_use  → step_type="tool_use"
+         ├── tool_result → step_type="tool_result"
+         ├── text       → step_type="text"
+         └── error      → step_type="error"</pre>
+    </div>
+  </div>
+</div>
+
+<div class="section">
+  <h3>2. Backend: Modificações no ExecutionTracker</h3>
+  <p>Hoje o tracker persiste steps no DB. Vamos adicionar broadcast via EventBus para cada step.</p>
+  <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px">
+    <div class="mockup">
+      <div class="mockup-header">Antes</div>
+      <div class="mockup-body" style="padding:12px;font-size:12px;color:#888">
+        feed_step() → INSERT no DB<br/>
+        (silencioso, sem broadcast)
+      </div>
+    </div>
+    <div class="mockup">
+      <div class="mockup-header">Depois</div>
+      <div class="mockup-body" style="padding:12px;font-size:12px;color:#34d399">
+        feed_step() → INSERT no DB<br/>
+        + event_bus.publish(STEP_EVENT)<br/>
+        → WS broadcast para frontend
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="section">
+  <h3>3. Frontend: Novos componentes</h3>
+  <table style="width:100%;font-size:12px;color:#cbd5e1">
+    <tr style="color:#888;text-align:left">
+      <th style="padding:8px">Componente</th>
+      <th style="padding:8px">Função</th>
+      <th style="padding:8px">Baseado em</th>
+    </tr>
+    <tr>
+      <td style="padding:8px;color:#93c5fd">LiveExecutionCard</td>
+      <td style="padding:8px">Substitui ExecutionCard. Header com status/tempo/tools, timeline colorida, steps em tempo real, output final.</td>
+      <td style="padding:8px;color:#888">multica AgentLiveCard</td>
+    </tr>
+    <tr>
+      <td style="padding:8px;color:#93c5fd">ExecutionTimeline</td>
+      <td style="padding:8px">Lista scrollable de steps com badges coloridos por tipo, expansão de detalhes, auto-scroll.</td>
+      <td style="padding:8px;color:#888">multica SingleAgentLiveCard</td>
+    </tr>
+    <tr>
+      <td style="padding:8px;color:#93c5fd">TimelineProgressBar</td>
+      <td style="padding:8px">Barra horizontal com segmentos coloridos proporcionais à contagem de cada tipo de step.</td>
+      <td style="padding:8px;color:#888">multica AgentTranscriptDialog</td>
+    </tr>
+    <tr>
+      <td style="padding:8px;color:#93c5fd">ExecutionSummary</td>
+      <td style="padding:8px">Grid com probabilidade, confiança, edge, decisão + reasoning text. Só aparece quando completed.</td>
+      <td style="padding:8px;color:#888">novo</td>
+    </tr>
+    <tr>
+      <td style="padding:8px;color:#93c5fd">useExecutionStream</td>
+      <td style="padding:8px">Hook que conecta ao WebSocket de steps e gerencia o buffer de eventos + auto-scroll.</td>
+      <td style="padding:8px;color:#888">multica useWSEvent</td>
+    </tr>
+  </table>
+</div>
+
+<div class="section">
+  <h3>4. Fluxo de dados frontend</h3>
+  <div class="mockup">
+    <div class="mockup-body" style="padding:16px;font-family:monospace;font-size:11px;line-height:1.8;color:#cbd5e1">
+<pre>ExecutionsPage
+  ├── useExecutions() — polling /api/executions (lista base, a cada 5s)
+  │
+  └── LiveExecutionCard (para cada execution)
+        ├── Estado: queued/claimed → mostra "Aguardando..."
+        ├── Estado: running → conecta WebSocket
+        │     ├── useExecutionStream(executionId)
+        │     │     ├── ws://.../api/executions/{id}/stream
+        │     │     ├── Buffer de steps em estado local
+        │     │     └── Auto-scroll com detecção de scroll-up
+        │     ├── TimelineProgressBar (segmentos coloridos)
+        │     └── ExecutionTimeline (steps em tempo real)
+        │
+        └── Estado: completed/failed → mostra output final
+              ├── ExecutionSummary (prob, conf, edge, decisão + reasoning)
+              ├── TimelineProgressBar (estático, completo)
+              └── ExecutionTimeline (colapsado, expansível)</pre>
+    </div>
+  </div>
+</div>
+
+<div class="section">
+  <h3>5. Cores por tipo de step</h3>
+  <div style="display:flex;gap:16px;flex-wrap:wrap">
+    <div style="display:flex;align-items:center;gap:8px">
+      <div style="width:12px;height:12px;border-radius:2px;background:#10b981"></div>
+      <span style="font-size:12px;color:#cbd5e1">text</span>
+    </div>
+    <div style="display:flex;align-items:center;gap:8px">
+      <div style="width:12px;height:12px;border-radius:2px;background:#8b5cf6"></div>
+      <span style="font-size:12px;color:#cbd5e1">thinking</span>
+    </div>
+    <div style="display:flex;align-items:center;gap:8px">
+      <div style="width:12px;height:12px;border-radius:2px;background:#3b82f6"></div>
+      <span style="font-size:12px;color:#cbd5e1">tool_use</span>
+    </div>
+    <div style="display:flex;align-items:center;gap:8px">
+      <div style="width:12px;height:12px;border-radius:2px;background:#64748b"></div>
+      <span style="font-size:12px;color:#cbd5e1">tool_result</span>
+    </div>
+    <div style="display:flex;align-items:center;gap:8px">
+      <div style="width:12px;height:12px;border-radius:2px;background:#ef4444"></div>
+      <span style="font-size:12px;color:#cbd5e1">error</span>
+    </div>
+  </div>
+</div>

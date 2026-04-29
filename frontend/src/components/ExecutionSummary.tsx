@@ -11,7 +11,6 @@ export default function ExecutionSummary({ exec }: Props) {
 
   return (
     <div className="space-y-3 animate-fade-up">
-      {/* Stats grid */}
       <div className="grid grid-cols-4 gap-2">
         <div className="rounded-lg bg-bg-deep p-2.5 text-center">
           <p className="text-[10px] font-medium uppercase tracking-wider text-text-muted">Probability</p>
@@ -39,7 +38,6 @@ export default function ExecutionSummary({ exec }: Props) {
         </div>
       </div>
 
-      {/* Reasoning */}
       {exec.reasoning && (
         <div className="rounded-lg bg-bg-deep p-3">
           <div className="flex items-center gap-1.5 mb-1.5">
@@ -52,14 +50,12 @@ export default function ExecutionSummary({ exec }: Props) {
         </div>
       )}
 
-      {/* Error */}
       {exec.status === 'failed' && exec.error_message && (
         <div className="rounded-lg bg-red-500/10 border border-red-500/20 p-3">
           <p className="text-xs text-red-400">{exec.error_message}</p>
         </div>
       )}
 
-      {/* Actions */}
       <div className="flex gap-2">
         <button
           onClick={() => {

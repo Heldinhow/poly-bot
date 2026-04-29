@@ -79,8 +79,10 @@ def main() -> None:
     decision_gate = DecisionGate()
     ai_agents = create_default_agents()
 
+    event_bus = ExecutionEventBus()
+
     # Agent Runtime setup
-    agent_runner = AgentRunner()
+    agent_runner = AgentRunner(event_bus=event_bus)
     installed_runtimes = agent_runner._runtime.detect_installed_runtimes()
     if installed_runtimes:
         logger.info(f"Agent Runtime: {len(installed_runtimes)} runtime(s) detected — {', '.join(installed_runtimes)}")
@@ -89,8 +91,6 @@ def main() -> None:
         logger.info("Agent Runtime: no coding agents detected on PATH — using legacy agents only")
         logger.info("AI agents: 3 legacy (Sports, Esports, Odds)")
         agent_runner = None
-
-    event_bus = ExecutionEventBus()
 
     scanner = Scanner(
         client=client,

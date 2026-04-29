@@ -3,6 +3,7 @@ import logging
 from uuid import UUID
 
 from agents.runtime.models import Message, MessageType, Result, Session
+from realtime.events import EXECUTION_STEP, ExecutionEvent
 from agents.truth_extractor import TruthClaimExtractor
 from db.truth_claim_repository import TruthClaimRepository
 from db.execution_repository import ExecutionRepository
@@ -52,6 +53,7 @@ class ExecutionTracker:
             async for msg in session.messages:
                 seq += 1
                 await self._save_step(log_id, seq, msg)
+                self._broadcast_step(log_id, seq, msg)
         except Exception as e:
             logger.error(f"Error tracking execution {log_id}: {e}")
             seq += 1
@@ -60,8 +62,13 @@ class ExecutionTracker:
                 seq,
                 Message(type=MessageType.ERROR, content=f"Tracker error: {e}"),
             )
+            self._broadcast_step(
+                log_id,
+                seq,
+                Message(type=MessageType.ERROR, content=f"Tracker error: {e}"),
+            )
 
-    async def _save_step(self, log_id: UUID, seq: int, msg: Message) -> None:
+    def _save_step(self, log_id: UUID, seq: int, msg: Message) -> None:
         """Persist a single message as an execution step."""
         tool_name = None
         tool_input = None
