@@ -9,6 +9,7 @@ from filters import build_filter_predicates
 from portfolio import PaperPortfolio
 from reporter import MarketResolver
 from db.cache_repository import CacheRepository
+from db.agent_metrics_repository import AgentMetricsRepository
 from db.decision_factor_repository import DecisionFactorRepository
 from db.execution_summary_repository import ExecutionSummaryRepository
 from realtime.events import (
@@ -41,6 +42,7 @@ class Scanner:
         self._cache = CacheRepository()
         self._factor_repo = DecisionFactorRepository()
         self._summary_repo = ExecutionSummaryRepository()
+        self._agent_metrics = AgentMetricsRepository()
         self._event_bus = None
 
         settings = get_settings()
@@ -277,18 +279,21 @@ class Scanner:
                             else:
                                 reject_reason = "threshold"
 
-                        # Cache the result
-                        self._cache.set_cache(
-                            market_id=market.id,
-                            question=market.question,
-                            yes_price=market.yes_price,
-                            no_price=market.no_price,
-                            probability=ai_probability,
-                            confidence=None,
-                            reasoning=ai_analysis,
-                            agent_name=agent_name,
-                            decision=decision,
-                        )
+                        # Cache the result — must not crash the scan
+                        try:
+                            self._cache.set_cache(
+                                market_id=market.id,
+                                question=market.question,
+                                yes_price=market.yes_price,
+                                no_price=market.no_price,
+                                probability=ai_probability,
+                                confidence=None,
+                                reasoning=ai_analysis,
+                                agent_name=agent_name,
+                                decision=decision,
+                            )
+                        except Exception:
+                            logger.exception(f"Failed to cache result for {market.id}")
 
                     # Paper trading: record bet
                     if self._portfolio and decision == "ACCEPT":
@@ -299,7 +304,10 @@ class Scanner:
                             price=underdog_price,
                             probability_ai=ai_probability,
                             analysis_summary=ai_analysis,
+                            agent_name=agent_name,
                         )
+                        if bet and agent_name:
+                            self._agent_metrics.record_bet(agent_name, bet.id)
                         if self._event_bus and bet:
                             self._event_bus.publish(ExecutionEvent(
                                 type=BET_RECORDED,

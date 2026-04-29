@@ -7,6 +7,17 @@ BEGIN
     END IF;
 END$$;
 
+
+DO $$
+BEGIN
+    IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'bets' AND column_name = 'agent_name') THEN
+        ALTER TABLE bets ADD COLUMN agent_name TEXT;
+    END IF;
+    IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'bets' AND column_name = 'source') THEN
+        ALTER TABLE bets ADD COLUMN source TEXT NOT NULL DEFAULT 'scan';
+    END IF;
+END$$;
+
 CREATE TABLE IF NOT EXISTS bets (
     id              SERIAL PRIMARY KEY,
     market_id       VARCHAR(64) NOT NULL,
@@ -24,6 +35,8 @@ CREATE TABLE IF NOT EXISTS bets (
     result          VARCHAR(10),
     resolved_at     TIMESTAMPTZ,
     trading_mode    trading_mode NOT NULL DEFAULT 'paper',
+    source          TEXT NOT NULL DEFAULT 'scan',
+    agent_name      TEXT,
     created_at      TIMESTAMPTZ DEFAULT NOW(),
     updated_at      TIMESTAMPTZ DEFAULT NOW()
 );
@@ -290,3 +303,63 @@ BEGIN
             EXECUTE FUNCTION update_updated_at_column();
     END IF;
 END$$;
+
+-- ============================================================
+-- Agent Metrics (real winrate tracking per agent)
+-- ============================================================
+
+CREATE TABLE IF NOT EXISTS agent_metrics (
+    id                  TEXT PRIMARY KEY DEFAULT gen_random_uuid(),
+    agent_name          TEXT NOT NULL UNIQUE,
+    total_bets          INTEGER DEFAULT 0,
+    wins                INTEGER DEFAULT 0,
+    losses              INTEGER DEFAULT 0,
+    pending             INTEGER DEFAULT 0,
+    total_pnl           REAL DEFAULT 0.0,
+    updated_at          TIMESTAMPTZ DEFAULT NOW()
+);
+
+CREATE INDEX IF NOT EXISTS idx_agent_metrics_name ON agent_metrics(agent_name);
+
+-- ============================================================
+-- Wallet Watch List (for copy trading)
+-- ============================================================
+
+CREATE TABLE IF NOT EXISTS wallet_watch_list (
+    id                  TEXT PRIMARY KEY DEFAULT gen_random_uuid(),
+    wallet_address      TEXT NOT NULL UNIQUE,
+    label               TEXT,
+    weight              REAL DEFAULT 1.0,
+    active              BOOLEAN DEFAULT TRUE,
+    created_at          TIMESTAMPTZ DEFAULT NOW()
+);
+
+CREATE INDEX IF NOT EXISTS idx_wallet_watch_active ON wallet_watch_list(active);
+
+-- ============================================================
+-- Pending Copy Trades (for review before confirmation)
+-- ============================================================
+
+CREATE TABLE IF NOT EXISTS pending_copy_trades (
+    id                  TEXT PRIMARY KEY DEFAULT gen_random_uuid(),
+    wallet_id           TEXT NOT NULL,
+    wallet_address      TEXT NOT NULL,
+    condition_id        TEXT NOT NULL,
+    title               TEXT NOT NULL,
+    outcome             TEXT NOT NULL DEFAULT 'YES',
+    avg_price           REAL NOT NULL,
+    odds                REAL NOT NULL,
+    initial_value       REAL NOT NULL DEFAULT 0,
+    realized_pnl        REAL NOT NULL DEFAULT 0,
+    is_open             BOOLEAN NOT NULL DEFAULT TRUE,
+    ai_probability      REAL,
+    ai_confidence       REAL,
+    ai_reasoning        TEXT,
+    edge                REAL NOT NULL DEFAULT 0,
+    agent_name          TEXT,
+    status             TEXT NOT NULL DEFAULT 'pending',  -- pending | confirmed | rejected | analyzed
+    created_at          TIMESTAMPTZ DEFAULT NOW()
+);
+
+CREATE INDEX IF NOT EXISTS idx_pending_copy_status ON pending_copy_trades(status);
+CREATE INDEX IF NOT EXISTS idx_pending_copy_wallet ON pending_copy_trades(wallet_id);

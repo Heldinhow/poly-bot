@@ -41,10 +41,10 @@ export interface TimeseriesPoint {
   bankroll: number;
 }
 
-async function apiFetch<T>(url: string): Promise<T> {
+export async function apiFetch<T>(url: string, options?: RequestInit): Promise<T> {
   let response: Response;
   try {
-    response = await fetch(url);
+    response = await fetch(url, options);
   } catch (err) {
     throw new Error(
       err instanceof Error ? `Network error: ${err.message}` : 'Network error'

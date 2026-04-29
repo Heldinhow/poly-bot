@@ -151,6 +151,12 @@
       "accessCount": 2,
       "lastAccessed": 1777404412523,
       "type": "file"
+    },
+    {
+      "path": "src/lib/api.ts",
+      "accessCount": 2,
+      "lastAccessed": 1777412416422,
+      "type": "directory"
     }
   ],
   "userDirectives": []

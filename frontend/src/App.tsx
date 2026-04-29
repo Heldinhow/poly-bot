@@ -1,9 +1,9 @@
 import { useState } from 'react';
 import DashboardHeader from '@/components/DashboardHeader';
 import { KpiRow } from '@/components/KpiRow';
-import { PrismRegime } from '@/components/PrismRegime';
 import JanusWeights from '@/components/JanusWeights';
-import { AgentHierarchy } from '@/components/AgentHierarchy';
+import { AgentDashboard } from '@/components/AgentDashboard';
+import { CopyTraderPanel } from '@/components/CopyTraderPanel';
 import PerformanceChart from '@/components/PerformanceChart';
 import OpenBetsTable from '@/components/OpenBetsTable';
 import ResolvedBetsTable from '@/components/ResolvedBetsTable';
@@ -75,19 +75,17 @@ function Dashboard() {
         <PerformanceChart />
       </section>
 
-      {/* Section: PRISM + JANUS Row */}
-      <section className="mb-4 grid grid-cols-1 gap-4 lg:grid-cols-2">
+      {/* Section: JANUS + Agent Dashboard + Copy Trading */}
+      <section className="mb-4 grid grid-cols-1 gap-4 lg:grid-cols-3">
         <div className="animate-fade-up" style={{ animationDelay: '0.15s' }}>
-          <PrismRegime />
-        </div>
-        <div className="animate-fade-up" style={{ animationDelay: '0.2s' }}>
           <JanusWeights />
         </div>
-      </section>
-
-      {/* Section: Agent Hierarchy */}
-      <section className="mb-4 animate-fade-up" style={{ animationDelay: '0.25s' }}>
-        <AgentHierarchy />
+        <div className="animate-fade-up" style={{ animationDelay: '0.2s' }}>
+          <AgentDashboard />
+        </div>
+        <div className="animate-fade-up" style={{ animationDelay: '0.25s' }}>
+          <CopyTraderPanel />
+        </div>
       </section>
 
       {/* Section: Open Bets */}

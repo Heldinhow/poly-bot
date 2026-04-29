@@ -27,6 +27,8 @@ class Bet:
     result: Optional[str] = None
     resolved_at: Optional[str] = None
     trading_mode: str = "paper"
+    agent_name: Optional[str] = None
+    source: str = "scan"
     id: Optional[int] = None
 
     def to_dict(self) -> dict:
@@ -48,6 +50,7 @@ class Bet:
             "result": self.result,
             "resolved_at": self.resolved_at,
             "trading_mode": self.trading_mode,
+            "agent_name": self.agent_name,
         }
 
     def to_row(self) -> dict:
@@ -67,6 +70,8 @@ class Bet:
             "result": self.result or "",
             "resolved_at": self.resolved_at or "",
             "trading_mode": self.trading_mode,
+            "agent_name": self.agent_name,
+            "source": self.source,
         }
 
     def to_db_dict(self) -> dict:
@@ -87,6 +92,8 @@ class Bet:
             "result": self.result,
             "resolved_at": self.resolved_at,
             "trading_mode": self.trading_mode,
+            "agent_name": self.agent_name,
+            "source": self.source,
         }
 
     @classmethod
@@ -108,6 +115,8 @@ class Bet:
             result=row.get("result"),
             resolved_at=row["resolved_at"].isoformat() if isinstance(row.get("resolved_at"), datetime) else row.get("resolved_at"),
             trading_mode=row["trading_mode"],
+            agent_name=row.get("agent_name"),
+            source=row.get("source", "scan"),
             id=row.get("id"),
         )
 

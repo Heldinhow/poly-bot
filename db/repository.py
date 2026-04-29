@@ -20,11 +20,11 @@ class BetRepository:
                 INSERT INTO bets (
                     market_id, question, outcome, price, stake, payout,
                     kelly_frac, edge, timestamp, probability_ai, analysis_summary,
-                    resolved, result, resolved_at, trading_mode
+                    resolved, result, resolved_at, trading_mode, agent_name, source
                 ) VALUES (
                     %(market_id)s, %(question)s, %(outcome)s, %(price)s, %(stake)s, %(payout)s,
                     %(kelly_frac)s, %(edge)s, %(timestamp)s, %(probability_ai)s, %(analysis_summary)s,
-                    %(resolved)s, %(result)s, %(resolved_at)s, %(trading_mode)s
+                    %(resolved)s, %(result)s, %(resolved_at)s, %(trading_mode)s, %(agent_name)s, %(source)s
                 )
                 RETURNING id
                 """,

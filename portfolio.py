@@ -5,6 +5,7 @@ from datetime import datetime, timezone
 from typing import Optional
 
 from db.repository import BetRepository
+from db.agent_metrics_repository import AgentMetricsRepository
 from models.bet import Bet
 from trading.mode_gate import TradingModeGate
 
@@ -31,6 +32,7 @@ class PaperPortfolio:
         self.kelly_frac = kelly_frac
         self.min_edge = min_edge
         self.bankroll = initial_bankroll
+        self._agent_metrics = AgentMetricsRepository()
 
         # Load open bets from DB and recalculate bankroll
         self.bets: list[Bet] = self.repository.get_open_bets()
@@ -83,6 +85,8 @@ class PaperPortfolio:
         price: float,
         probability_ai: Optional[float] = None,
         analysis_summary: str = "",
+        agent_name: Optional[str] = None,
+        source: str = "scan",
     ) -> Optional[Bet]:
         """Record a new bet in the database."""
         # Check for duplicate open bet via repository
@@ -113,10 +117,13 @@ class PaperPortfolio:
             probability_ai=probability_ai,
             analysis_summary=analysis_summary,
             trading_mode=self.mode_gate.get_mode_for_bet(),
+            agent_name=agent_name,
+            source=source,
         )
 
         # Persist to database
-        self.repository.create_bet(bet)
+        bet_id = self.repository.create_bet(bet)
+        bet.id = bet_id
         self.bets.append(bet)
         self.bankroll -= stake
 
@@ -145,6 +152,13 @@ class PaperPortfolio:
                 bet.resolved_at = datetime.now(timezone.utc).isoformat()
                 if won:
                     self.bankroll += bet.payout
+                # Record against agent metrics
+                if bet.agent_name:
+                    pnl = bet.payout - bet.stake if won else -bet.stake
+                    if won:
+                        self._agent_metrics.record_win(bet.agent_name, pnl)
+                    else:
+                        self._agent_metrics.record_loss(bet.agent_name, pnl)
                 logger.info(
                     f"Bet resolved: {bet.question[:50]} | {bet.result} "
                     f"| bankroll=${self.bankroll:.2f}"

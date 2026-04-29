@@ -67,9 +67,9 @@ class CacheRepository:
                     ),
                 )
             return True
-        except Exception:
-            logger.exception(f"Error caching analysis for {market_id}")
-            return False
+        except Exception as e:
+            logger.error(f"Error caching analysis for {market_id}: {e} — {type(e).__name__}")
+            raise  # Re-raise so we know something is wrong
 
     def should_analyze(
         self,
