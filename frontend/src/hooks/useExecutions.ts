@@ -7,6 +7,7 @@ export interface Execution {
   task_id: string;
   market_id: string;
   agent_id: string;
+  agent_name?: string;
   runtime: string;
   model: string | null;
   status: string;

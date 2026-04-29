@@ -41,6 +41,7 @@ def _serialize_json(data):
 from db.agent_skill_repository import AgentSkillRepository
 from db.execution_repository import ExecutionRepository
 from db.skill_repository import SkillRepository
+from realtime.events import EXECUTION_STEP
 
 logger = logging.getLogger(__name__)
 
@@ -442,6 +443,62 @@ class APIHandler:
                 self._event_bus.unsubscribe(subscription)
             await ws.close()
 
+    async def executions_stream_ws(self, request):
+        """GET /api/executions/{id}/stream — WebSocket endpoint streaming steps for one execution."""
+        log_id_str = request.match_info["id"]
+        ws = web.WebSocketResponse()
+        await ws.prepare(request)
+
+        await ws.send_json({"type": "connected", "execution_log_id": log_id_str})
+
+        sent_seqs = set()
+        subscription = None
+
+        def on_event(data):
+            if data.type == EXECUTION_STEP:
+                exec_data = data.data if isinstance(data.data, dict) else {}
+                if exec_data.get("execution_log_id") != log_id_str:
+                    return
+                seq = exec_data.get("seq")
+                if seq in sent_seqs:
+                    return
+                sent_seqs.add(seq)
+                asyncio.create_task(ws.send_json({
+                    "type": "step",
+                    "seq": exec_data.get("seq"),
+                    "step_type": exec_data.get("step_type"),
+                    "content": exec_data.get("content"),
+                    "tool_name": exec_data.get("tool_name"),
+                    "tool_input": exec_data.get("tool_input"),
+                    "tool_output": exec_data.get("tool_output"),
+                }))
+
+        if self._event_bus:
+            subscription = self._event_bus.subscribe(on_event)
+
+        async def heartbeat():
+            while not ws.closed:
+                try:
+                    await asyncio.sleep(15)
+                    await ws.send_json({"type": "ping"})
+                except Exception:
+                    break
+
+        heartbeat_task = asyncio.create_task(heartbeat())
+
+        try:
+            async for msg in ws:
+                if msg.type == web.WSMsgType.CLOSE:
+                    break
+                elif msg.type == web.WSMsgType.ERROR:
+                    break
+        finally:
+            heartbeat_task.cancel()
+            if subscription is not None:
+                # subscription is a lambda that calls _unsubscribe
+                subscription()
+            await ws.close()
+
     # ------------------------------------------------------------------
     # Audit Trail
     # ------------------------------------------------------------------
@@ -623,9 +680,10 @@ def create_app(portfolio, scan_controller=None, event_bus=None):
     app.router.add_delete("/api/skills/{id}", handler.delete_skill)
 
     app.router.add_get("/api/executions", handler.list_executions)
-    app.router.add_get("/api/executions/{id}", handler.get_execution)
-    app.router.add_get("/api/executions/{id}/steps", handler.get_execution_steps)
     app.router.add_get("/api/executions/live", handler.executions_live_ws)
+    app.router.add_get("/api/executions/{id}/stream", handler.executions_stream_ws)
+    app.router.add_get("/api/executions/{id}/steps", handler.get_execution_steps)
+    app.router.add_get("/api/executions/{id}", handler.get_execution)
 
     # Audit trail routes
     app.router.add_get("/api/audit/market/{market_id}", handler.get_market_audit)

@@ -3,6 +3,7 @@ import logging
 from uuid import UUID
 
 from agents.runtime.models import Message, MessageType, Result, Session
+from realtime.events import EXECUTION_STEP, ExecutionEvent
 from agents.truth_extractor import TruthClaimExtractor
 from db.truth_claim_repository import TruthClaimRepository
 from db.execution_repository import ExecutionRepository
@@ -13,10 +14,11 @@ logger = logging.getLogger(__name__)
 class ExecutionTracker:
     """Consumes agent message streams and persists steps to the database in real-time."""
 
-    def __init__(self, repository: ExecutionRepository | None = None):
+    def __init__(self, repository: ExecutionRepository | None = None, event_bus=None):
         self._repo = repository or ExecutionRepository()
         self._truth_repo = TruthClaimRepository()
         self._extractor = TruthClaimExtractor()
+        self._event_bus = event_bus
 
     def claim(self, log_id: UUID, runtime: str) -> bool:
         """Claim an execution log for a specific runtime.
@@ -50,6 +52,7 @@ class ExecutionTracker:
             async for msg in session.messages:
                 seq += 1
                 await self._save_step(log_id, seq, msg)
+                self._broadcast_step(log_id, seq, msg)
         except Exception as e:
             logger.error(f"Error tracking execution {log_id}: {e}")
             seq += 1
@@ -58,8 +61,13 @@ class ExecutionTracker:
                 seq,
                 Message(type=MessageType.ERROR, content=f"Tracker error: {e}"),
             )
+            self._broadcast_step(
+                log_id,
+                seq,
+                Message(type=MessageType.ERROR, content=f"Tracker error: {e}"),
+            )
 
-    async def _save_step(self, log_id: UUID, seq: int, msg: Message) -> None:
+    def _save_step(self, log_id: UUID, seq: int, msg: Message) -> None:
         """Persist a single message as an execution step."""
         tool_name = None
         tool_input = None
@@ -89,6 +97,26 @@ class ExecutionTracker:
             logger.debug(f"Step saved: log={log_id}, seq={seq}, type={msg.type.value}")
         except Exception as e:
             logger.error(f"Failed to save step {seq} for log {log_id}: {e}")
+
+    def _broadcast_step(self, log_id: UUID, seq: int, msg: Message) -> None:
+        if self._event_bus is None:
+            return
+        try:
+            event = ExecutionEvent(
+                type=EXECUTION_STEP,
+                data={
+                    "execution_log_id": str(log_id),
+                    "seq": seq,
+                    "step_type": msg.type.value,
+                    "content": msg.content if msg.type != MessageType.TOOL_RESULT else None,
+                    "tool_name": msg.metadata.get("tool_name") if msg.metadata else None,
+                    "tool_input": msg.metadata.get("input") if msg.metadata else None,
+                    "tool_output": msg.content if msg.type == MessageType.TOOL_RESULT else None,
+                },
+            )
+            self._event_bus.publish(event)
+        except Exception:
+            pass
 
     def finalize(self, log_id: UUID, result: Result) -> bool:
         """Finalize the execution log with the result.
