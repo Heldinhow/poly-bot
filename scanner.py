@@ -1,5 +1,6 @@
 import logging
 import asyncio
+import hashlib
 
 from alerts import AlertSender
 from client import PolymarketClient
@@ -9,6 +10,7 @@ from filters import build_filter_predicates
 from portfolio import PaperPortfolio
 from reporter import MarketResolver
 from db.cache_repository import CacheRepository
+from db.connection import get_db_cursor
 from db.agent_metrics_repository import AgentMetricsRepository
 from db.decision_factor_repository import DecisionFactorRepository
 from db.execution_summary_repository import ExecutionSummaryRepository
@@ -61,18 +63,24 @@ class Scanner:
         Returns True only if:
         - Market passes static filters (odds sweet spot, volume)
         - Market hasn't been analyzed recently with stable price
+        - Another scan is not currently analyzing this market (IN_PROGRESS claim check)
+
+        Note: Concurrent scan coordination uses pg_advisory_xact_lock + claim/release
+        mechanism in the scan loop itself (not in this method). This method only
+        checks the cache state for decision-making.
         """
         try:
+            settings = get_settings()
             # 1. Odds sweet spot: not too extreme, not too close
             if odds > 10.0 or odds < 2.0:
                 return False
 
-            # 2. Implied probability range: underdog between 10% and 40%
-            if underdog_price < 0.10 or underdog_price > 0.40:
+            # 2. Implied probability range: underdog between 10% and max_price
+            if underdog_price < 0.10 or underdog_price > settings.max_price:
                 return False
 
             # 3. Volume threshold
-            if market.volume_24h < 10000:
+            if market.volume_24h < settings.min_volume:
                 return False
 
             # 4. Check cache — avoid re-analyzing stable markets
@@ -85,6 +93,7 @@ class Scanner:
             return True
 
         except Exception:
+            logger.warning(f"_should_analyze: unexpected error checking market {getattr(market, 'id', 'unknown')}", exc_info=True)
             return False
 
     async def _analyze_market(self, market) -> tuple[float | None, str]:
@@ -168,8 +177,13 @@ class Scanner:
             try:
                 loop = asyncio.new_event_loop()
                 asyncio.set_event_loop(loop)
+                processed_market_ids = set()
 
                 for market in analyzable:
+                    # In-scan deduplication: skip if already processed in this run
+                    if market.id in processed_market_ids:
+                        logger.debug(f"Skipping duplicate market {market.id} in same scan run")
+                        continue
                     underdog_price = (
                         market.yes_price
                         if market.yes_price < market.no_price
@@ -190,6 +204,23 @@ class Scanner:
                             question=market.question,
                             message=f"Analyzing: {market.question[:60]}..."
                         ))
+
+                    # Mark as processed immediately to prevent duplicate analysis in this scan
+                    processed_market_ids.add(market.id)
+
+                    # Acquire advisory lock to prevent concurrent scans analyzing same market
+                    lock_key = int(hashlib.md5(market.id.encode()).hexdigest()[:16], 16) % (2**31)
+                    try:
+                        with get_db_cursor() as lock_cursor:
+                            lock_cursor.execute("SELECT pg_advisory_xact_lock(%s)", (lock_key,))
+                    except Exception as e:
+                        logger.warning(f"[LOCK] Failed to acquire lock for {market.id}: {e} — skipping")
+                        continue
+
+                    # Try to claim this market — if another scan claimed it, skip
+                    if not self._cache.claim_market(market.id):
+                        logger.info(f"Skipping {market.id}: claimed by another scan")
+                        continue
 
                     # AI Analysis Layer — Agent Runtime first, fallback to legacy agents
                     ai_probability = None
@@ -240,6 +271,11 @@ class Scanner:
                         except Exception as e:
                             logger.error(f"[Legacy] FAILED {market.question[:50]}: {e}")
 
+                    # Compute edge before decision gate and event publish
+                    edge = 0.0
+                    if ai_probability is not None:
+                        edge = (ai_probability * odds) - 1.0
+
                     if self._event_bus and ai_probability is not None:
                         self._event_bus.publish(ExecutionEvent(
                             type=MARKET_ANALYZED,
@@ -254,10 +290,8 @@ class Scanner:
                     # Decision Gate
                     decision = "SKIP"
                     reject_reason = None
-                    edge = 0.0
                     bet = None
                     if self._decision_gate and ai_probability is not None:
-                        edge = (ai_probability * odds) - 1.0
                         decision = self._decision_gate.evaluate_edge(edge, ai_probability, implied_prob)
                         logger.info(
                             f"Decision for {market.question[:50]}: {decision} "
@@ -293,7 +327,17 @@ class Scanner:
                                 decision=decision,
                             )
                         except Exception:
-                            logger.exception(f"Failed to cache result for {market.id}")
+                            logger.warning(
+                                f"[CACHE SKIP] Failed to cache result for market {market.id}: "
+                                f"question={market.question[:60]}. "
+                                f"Will rely on execution_logs fallback to prevent re-analysis."
+                            )
+
+                        # Release the market claim and set final decision
+                        try:
+                            self._cache.release_claim(market.id, decision)
+                        except Exception as e:
+                            logger.warning(f"[RELEASE] Failed to release claim for {market.id}: {e}")
 
                     # Paper trading: record bet
                     if self._portfolio and decision == "ACCEPT":

@@ -3,6 +3,7 @@
 ## [Unreleased]
 
 ### Fixed
+- **Bet analysis duplication** — Concurrent scan runs could analyze the same market simultaneously (wasting API quota, producing inconsistent results when price changed mid-analysis). Fixed with: (1) PostgreSQL advisory lock (`pg_advisory_xact_lock`) keyed on market_id to block concurrent scans, (2) claim mechanism (`claim_market`/`release_claim`) with `IN_PROGRESS` decision state to mark markets being analyzed, (3) cache write failure fallback to `execution_logs` so markets aren't re-analyzed if cache write fails, (4) in-scan deduplication via `processed_market_ids` set to skip API duplicates.
 - **Decision Gate — no bets placed since multi-agent refactor** — `evaluate_edge()` returned `"HIGH"`/`"MEDIUM"`/`"LOW"`, but `scanner.py` checked for `"ACCEPT"`. The mismatch meant `decision == "ACCEPT"` was always false, so `record_bet()` was never called and zero bets were recorded. Fixed by making `evaluate_edge()` return `"ACCEPT"` for valid edges (≥ 5%) and `"REJECT"` for everything else.
 - **Audit API — empty dashboard** — `/api/audit/summary` returned a raw array instead of `{ items, next_cursor }`, and `/api/audit/market` used `"factors"` instead of `"decision_factors"`, both mismatched the frontend contract.
 - **Audit persistence — FK violation** — `scanner.py` used a placeholder UUID `"00000000-0000-0000-0000-000000000000"` for missing `execution_log_id`, violating the FK constraint on `decision_factors` and `execution_summary`. Changed to pass `None` (NULL) when no execution log exists.

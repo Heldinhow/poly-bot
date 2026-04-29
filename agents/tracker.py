@@ -68,7 +68,7 @@ class ExecutionTracker:
                 Message(type=MessageType.ERROR, content=f"Tracker error: {e}"),
             )
 
-    def _save_step(self, log_id: UUID, seq: int, msg: Message) -> None:
+    async def _save_step(self, log_id: UUID, seq: int, msg: Message) -> None:
         """Persist a single message as an execution step."""
         tool_name = None
         tool_input = None

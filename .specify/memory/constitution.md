@@ -1,50 +1,78 @@
-# [PROJECT_NAME] Constitution
-<!-- Example: Spec Constitution, TaskFlow Constitution, etc. -->
+# Polymarket Merge Constitution
 
 ## Core Principles
 
-### [PRINCIPLE_1_NAME]
-<!-- Example: I. Library-First -->
-[PRINCIPLE_1_DESCRIPTION]
-<!-- Example: Every feature starts as a standalone library; Libraries must be self-contained, independently testable, documented; Clear purpose required - no organizational-only libraries -->
+### I. Underdog Value Strategy (NON-NEGOTIABLE)
+The bot MUST only bet on underdog outcomes where market price ≤ 35% (MAX_PRICE) and odds ≤ 20:1 (MAX_ODDS).
+- Target mispriced underdogs: probability estimates vs market-implied odds
+- Reject any bet where AI probability < implied probability × 0.85 (the 85% rule)
+- Edge MUST be positive and above minimum threshold (default 5%)
 
-### [PRINCIPLE_2_NAME]
-<!-- Example: II. CLI Interface -->
-[PRINCIPLE_2_DESCRIPTION]
-<!-- Example: Every library exposes functionality via CLI; Text in/out protocol: stdin/args → stdout, errors → stderr; Support JSON + human-readable formats -->
+### II. Multi-Stage Market Filtering
+Markets pass through 3 sequential filters before analysis:
+1. Volume Filter: volume_24h ≥ MIN_VOLUME ($10,000)
+2. Live Market Filter: resolution within 48h, exclude politics/future/financial
+3. Value Filter: underdog price ≤ MAX_PRICE, odds ≤ MAX_ODDS
+- A market MUST pass all three stages to be analyzed
 
-### [PRINCIPLE_3_NAME]
-<!-- Example: III. Test-First (NON-NEGOTIABLE) -->
-[PRINCIPLE_3_DESCRIPTION]
-<!-- Example: TDD mandatory: Tests written → User approved → Tests fail → Then implement; Red-Green-Refactor cycle strictly enforced -->
+### III. Fault-Tolerant AI Analysis
+- 3 agents run concurrently per market (sports, esports, odds analysts)
+- Each agent returns: probability, confidence, reasoning
+- Average probability across successful agents
+- If any agent fails, other agents MUST continue independently
+- Failed agents MUST be ignored (not block decision)
 
-### [PRINCIPLE_4_NAME]
-<!-- Example: IV. Integration Testing -->
-[PRINCIPLE_4_DESCRIPTION]
-<!-- Example: Focus areas requiring integration tests: New library contract tests, Contract changes, Inter-service communication, Shared schemas -->
+### IV. Kelly Criterion Position Sizing
+- Stake calculated using Kelly formula: kelly_frac × ((b × p - q) / b) × bankroll
+- Where b = odds - 1, p = AI probability, q = 1 - p
+- Kelly fraction defaults to 25% (conservative)
+- Minimum stake: $1.00 (Polymarket minimum)
+- Maximum stake: 10% of current bankroll
+- Bankroll MUST never go below 0
 
-### [PRINCIPLE_5_NAME]
-<!-- Example: V. Observability, VI. Versioning & Breaking Changes, VII. Simplicity -->
-[PRINCIPLE_5_DESCRIPTION]
-<!-- Example: Text I/O ensures debuggability; Structured logging required; Or: MAJOR.MINOR.BUILD format; Or: Start simple, YAGNI principles -->
+### V. Deduplication
+- Only one open bet per market_id per trading_mode
+- Checked via has_open_bet_for_market() before placing any bet
+- Both paper and live modes track open bets independently
 
-## [SECTION_2_NAME]
-<!-- Example: Additional Constraints, Security Requirements, Performance Standards, etc. -->
+## Domain Constraints
 
-[SECTION_2_CONTENT]
-<!-- Example: Technology stack requirements, compliance standards, deployment policies, etc. -->
+### Technology Stack
+- Language: Python 3.14
+- Database: PostgreSQL (primary persistence)
+- Cache: Redis (market data caching)
+- LLM Provider: MiniMax (agent inference)
+- Framework: Pydantic (data validation and settings)
 
-## [SECTION_3_NAME]
-<!-- Example: Development Workflow, Review Process, Quality Gates, etc. -->
+### Betting Rules
+- Bankroll never goes below 0 (position sizing prevents it)
+- Bets only placed on unresolved markets
+- AI analysis is best-effort; failed agents are ignored
+- Edge must be positive and above minimum threshold (5% default)
+- Underdog must not be "too unlikely" per AI (85% rule)
 
-[SECTION_3_CONTENT]
-<!-- Example: Code review requirements, testing gates, deployment approval process, etc. -->
+### Persistence Requirements
+- All bets persisted in PostgreSQL with full audit trail
+- Sub-100ms read latency for open bets via Redis cache
+- Zero data loss during mode transitions (paper ↔ live)
+- Clean architectural separation between paper and live execution paths
 
-## Governance
-<!-- Example: Constitution supersedes all other practices; Amendments require documentation, approval, migration plan -->
+## Development Workflow
 
-[GOVERNANCE_RULES]
-<!-- Example: All PRs/reviews must verify compliance; Complexity must be justified; Use [GUIDANCE_FILE] for runtime development guidance -->
+### Code Review
+- All PRs/reviews MUST verify compliance with constitution principles
+- Complexity MUST be justified with simpler alternative rejected
+- Use docs/domain.md and docs/glossary.md for domain terminology
 
-**Version**: [CONSTITUTION_VERSION] | **Ratified**: [RATIFICATION_DATE] | **Last Amended**: [LAST_AMENDED_DATE]
-<!-- Example: Version: 2.1.1 | Ratified: 2025-06-13 | Last Amended: 2025-07-16 -->
+### Testing
+- Unit tests REQUIRED for new agent logic
+- Integration tests REQUIRED for repository patterns
+- Contract tests REQUIRED for API endpoints
+- Test-First (TDD) strongly encouraged for decision logic
+
+### Architecture
+- Repository pattern for all database operations
+- Event-driven architecture for execution tracking
+- Separation: Scanner → Decision Gate → Execution → Resolution
+
+**Version**: 1.0.0 | **Ratified**: TODO | **Last Amended**: 2026-04-28
